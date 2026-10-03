@@ -44,9 +44,11 @@ const os = require("os");
     ok("预览名称显示第一张", (await page.textContent("#preview-name")).includes("手机截图"));
 
     // 3. 填写标注信息
-    await page.fill("#meta-name", "张三");
-    await page.fill("#meta-id", "2023123456");
-    await page.fill("#meta-cls", "软件2301班");
+    const metaVal = (i) =>
+      page.locator("#meta-fields .meta-row").nth(i).locator("input").nth(1);
+    await metaVal(0).fill("张三");
+    await metaVal(1).fill("2023123456");
+    await metaVal(2).fill("软件2301班");
     await page.waitForTimeout(300);
     ok("信息已填写", true);
 
@@ -88,7 +90,12 @@ const os = require("os");
     // 8. localStorage 持久化：刷新后姓名还在
     await page.reload({ waitUntil: "networkidle" });
     await page.waitForTimeout(300);
-    const nameVal = await page.inputValue("#meta-name");
+    const nameVal = await page
+      .locator("#meta-fields .meta-row")
+      .nth(0)
+      .locator("input")
+      .nth(1)
+      .inputValue();
     const posActive = await page
       .locator('#pos-grid button[data-pos="top-right"]')
       .evaluate((el) => el.classList.contains("active"));

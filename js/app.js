@@ -6,6 +6,17 @@
   "use strict";
 
   // ---------- 状态 ----------
+  const RANDOM_DEFAULTS = {
+    enabled: true,
+    sizePct: 12,
+    posPct: 6,
+    opacityPct: 15,
+    color: true,
+    font: true,
+    seed: "1",
+    fontPool: ["yahei", "heiti", "songti", "kaiti"],
+  };
+
   const state = {
     images: [], // { file, name, imgEl, url }
     currentIndex: -1,
@@ -14,7 +25,13 @@
       nameTemplate: "{姓名}_{学号}_{班级}_{序号}",
       meta: { 姓名: "", 学号: "", 班级: "" },
       position: "bottom-center",
+      customX: 50,
+      customY: 88,
       fontSizePct: 4,
+      fontKey: "yahei",
+      fontWeight: "600",
+      italic: false,
+      textAlign: "center",
       opacity: 55,
       textColor: "#ffffff",
       bgColor: "#000000",
@@ -24,11 +41,57 @@
       matchBy: "order",
       exportLimit: "",
       roster: null, // { columns: [], rows: [{}], map: {name,id,cls}, hasHeader: bool }
+      random: Object.assign({}, RANDOM_DEFAULTS, { fontPool: RANDOM_DEFAULTS.fontPool.slice() }),
     },
   };
 
   const STORE_KEY = "snapmark.settings.v2";
   const MAX_PERSIST_ROWS = 2000;
+
+  // 字体表：全部使用系统字体，不联网加载，保证离线可用
+  const FONTS = {
+    yahei: { label: "微软雅黑", css: '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif' },
+    heiti: { label: "黑体", css: '"SimHei", "Heiti SC", "Noto Sans SC", sans-serif' },
+    songti: { label: "宋体", css: '"SimSun", "Songti SC", "Noto Serif SC", serif' },
+    kaiti: { label: "楷体", css: '"KaiTi", "STKaiti", "Kaiti SC", "Noto Serif SC", serif' },
+    fangsong: { label: "仿宋", css: '"FangSong", "STFangsong", "Noto Serif SC", serif' },
+    dengxian: { label: "等线", css: '"DengXian", "PingFang SC", "Noto Sans SC", sans-serif' },
+    pingfang: { label: "苹方", css: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif' },
+    source: { label: "思源黑体", css: '"Source Han Sans SC", "Noto Sans SC", "Microsoft YaHei", sans-serif' },
+    yuanti: { label: "圆体", css: '"Yuanti SC", "HYQiHei", "Microsoft YaHei", sans-serif' },
+    mono: { label: "等宽", css: '"Cascadia Mono", Consolas, "Courier New", monospace' },
+    system: { label: "系统默认", css: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+  };
+
+  // 随机文字颜色池：都在深色底条上清晰可读
+  const COLOR_PALETTE = [
+    "#ffffff", "#ffe066", "#ffd23f", "#ffa502", "#ff6b6b", "#ff9ff3",
+    "#4ecdc4", "#2ed573", "#7bed9f", "#70a1ff", "#a29bfe", "#f8f9fa",
+  ];
+
+  /** 把一个字符串散列成 32 位无符号整数，用于可复现的随机 */
+  function hashStr(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  /** mulberry32：轻量确定性伪随机，同一个种子每次结果一致 */
+  function mulberry32(a) {
+    return function () {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function clamp(v, lo, hi) {
+    return Math.min(Math.max(v, lo), hi);
+  }
 
   const NAME_KEYS = ["姓名", "名字", "学生姓名", "学生", "人员", "name"];
   const ID_KEYS = ["学号", "学籍号", "编号", "考生号", "工号", "id"];
@@ -71,13 +134,31 @@
     return String(n).padStart(String(total).length, "0");
   }
 
-  /** 通用模板替换：任何 {列名} 都会被替换 */
+  /** 中文输入法常打出全角括号，统一成半角，否则 {姓名} 这种占位符匹配不上 */
+  function normalizePlaceholders(tpl) {
+    return String(tpl == null ? "" : tpl)
+      .replace(/[\uFF5B]/g, "{")
+      .replace(/[\uFF5D]/g, "}");
+  }
+
+  /** 通用模板替换：任何 {列名} 都会被替换，花名册里那列叫什么就写什么 */
   function fillTemplate(tpl, vars) {
-    return String(tpl || "").replace(/\{([^{}]+)\}/g, (m, rawKey) => {
+    return normalizePlaceholders(tpl).replace(/\{([^{}]+)\}/g, (m, rawKey) => {
       const key = rawKey.trim();
       const v = vars[key];
       return v === undefined || v === null || v === "" ? "" : String(v);
     });
+  }
+
+  /** 模板里用到的变量名列表，用于提示写错的占位符 */
+  function templateVarNames(tpl) {
+    const out = [];
+    normalizePlaceholders(tpl).replace(/\{([^{}]+)\}/g, (m, rawKey) => {
+      const key = rawKey.trim();
+      if (key && out.indexOf(key) === -1) out.push(key);
+      return m;
+    });
+    return out;
   }
 
   function hexToRgba(hex, alpha) {
@@ -87,28 +168,66 @@
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
   }
 
+  /** 按宽度折行；只有当内容真的放不下时，末行才加省略号 */
   function truncateLines(ctx, text, maxWidth, maxLines) {
     const lines = [];
+    const chars = Array.from(text);
     let current = "";
-    for (const ch of text) {
-      const test = current + ch;
-      if (ctx.measureText(test).width <= maxWidth || !current) {
+    let overflowed = false;
+
+    for (let i = 0; i < chars.length; i++) {
+      const test = current + chars[i];
+      if (current === "" || ctx.measureText(test).width <= maxWidth) {
         current = test;
-      } else {
-        lines.push(current);
-        current = ch;
-        if (lines.length === maxLines) break;
+        continue;
       }
+      if (lines.length === maxLines - 1) {
+        overflowed = true;
+        break;
+      }
+      lines.push(current);
+      current = chars[i];
     }
-    if (current && lines.length < maxLines) lines.push(current);
-    if (lines.length === maxLines) {
-      let last = lines[lines.length - 1];
-      while (ctx.measureText(last + "…").width > maxWidth && last.length > 0) {
+
+    if (overflowed) {
+      let last = current;
+      while (last.length > 0 && ctx.measureText(last + "…").width > maxWidth) {
         last = last.slice(0, -1);
       }
-      lines[lines.length - 1] = last + "…";
+      lines.push(last + "…");
+      return lines;
     }
-    return lines;
+    if (current !== "") lines.push(current);
+    return lines.length ? lines : [""];
+  }
+
+  const MAX_TEXT_LINES = 8;
+
+  /** 不依赖花名册的内置变量 */
+  function builtinVars() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    const ymd = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+    return { 日期: ymd, 时间: hm, 日期时间: `${ymd} ${hm}` };
+  }
+
+  /** 模板 → 实际绘制行：模板里每个换行就是图上的一行，超宽再自动折 */
+  function buildTextLines(ctx, tpl, scope, maxWidth) {
+    const raw = fillTemplate(tpl, scope);
+    const tplLines = raw
+      .split(/\r?\n/)
+      .map((x) => x.trim())
+      .filter((x) => x !== "");
+    const out = [];
+    for (const tl of tplLines) {
+      if (out.length >= MAX_TEXT_LINES) break;
+      const wrapped = truncateLines(ctx, tl, maxWidth, MAX_TEXT_LINES - out.length);
+      for (const wl of wrapped) {
+        if (out.length < MAX_TEXT_LINES) out.push(wl);
+      }
+    }
+    return out;
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -417,6 +536,7 @@
       limitField.hidden = true;
       matchField.hidden = true;
       $("btn-clear-roster").disabled = true;
+      renderVarChips();
       return;
     }
 
@@ -459,6 +579,7 @@
 
     preview.hidden = false;
     preview.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${more}`;
+    renderVarChips();
   }
 
   /** 按列映射，把名单行整理成统一字段 姓名/学号/班级 */
@@ -576,6 +697,13 @@
       }
     }
 
+    // 给每个任务挂上随机变化参数（同一张图每次结果一致）
+    jobs.forEach((j) => {
+      const name = (j.vars && j.vars["姓名"]) || "";
+      const id = (j.vars && j.vars["学号"]) || "";
+      j.variation = makeVariation(`${j.seq}|${name}|${id}`);
+    });
+
     // 导出数量限制
     const limit = parseInt(s.exportLimit, 10);
     let limited = jobs;
@@ -584,31 +712,90 @@
       warnings.push(`已按数量限制只导出前 ${limit} 张`);
     }
 
+    // 提示模板里写错/没有对应数据的占位符
+    const known = {};
+    availableVariables().forEach((k) => (known[k] = true));
+    known["序号"] = true;
+    const missing = [];
+    [
+      ["图片文字", s.template],
+      ["文件名", s.nameTemplate],
+    ].forEach(([label, tpl]) => {
+      templateVarNames(tpl).forEach((k) => {
+        if (known[k]) return;
+        const label2 = `{${k}}（${label}模板）`;
+        if (missing.indexOf(label2) === -1) missing.push(label2);
+      });
+    });
+    if (missing.length) {
+      warnings.push(
+        `这些变量没有对应数据：${missing.join("、")}。花名册里那列叫什么就用什么，也可以在「可用变量」里点选。`
+      );
+    }
+
     if (!limited.length && !errors.length) errors.push("没有可导出的内容");
     return { jobs: limited, warnings, errors };
   }
 
   // ---------- 绘制 ----------
-  function drawAnnotated(ctx, img, vars, seq, total) {
+  /** 生成某一张图的随机变化参数；同一个种子 + 同一个人 → 结果稳定不变 */
+  function makeVariation(key) {
+    const r = state.settings.random;
+    if (!r || !r.enabled) return null;
+    const rnd = mulberry32(hashStr(String(r.seed) + "|" + key));
+    const v = {
+      sizeMul: 1 + (rnd() * 2 - 1) * (Number(r.sizePct) / 100),
+      dx: (rnd() * 2 - 1) * (Number(r.posPct) / 100),
+      dy: (rnd() * 2 - 1) * (Number(r.posPct) / 100),
+      opacityMul: 1 + (rnd() * 2 - 1) * (Number(r.opacityPct) / 100),
+      fontKey: null,
+      textColor: null,
+    };
+    const pool = (r.fontPool || []).filter((k) => FONTS[k]);
+    if (r.font && pool.length) v.fontKey = pool[Math.floor(rnd() * pool.length)];
+    if (r.color) v.textColor = COLOR_PALETTE[Math.floor(rnd() * COLOR_PALETTE.length)];
+    return v;
+  }
+
+  function fontString(sizePx, fontKey, weight, italic) {
+    const fam = (FONTS[fontKey] || FONTS.yahei).css;
+    return `${italic ? "italic " : ""}${weight || 600} ${sizePx}px ${fam}`;
+  }
+
+  /** 把文字框夹在图片内，避免自定义位置/随机偏移把字挤出画面 */
+  function clampAnchor(x, y, w, h, barW, barH) {
+    const m = Math.round(Math.min(w, h) * 0.01);
+    const loX = Math.min(barW / 2 + m, w / 2);
+    const hiX = Math.max(w - barW / 2 - m, w / 2);
+    const loY = Math.min(barH / 2 + m, h / 2);
+    const hiY = Math.max(h - barH / 2 - m, h / 2);
+    return { x: clamp(x, loX, hiX), y: clamp(y, loY, hiY) };
+  }
+
+  function drawAnnotated(ctx, img, vars, seq, total, variation) {
     const s = state.settings;
+    const v = variation || null;
     const w = img.naturalWidth,
       h = img.naturalHeight;
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(img, 0, 0, w, h);
 
-    const scope = Object.assign({}, vars, {
+    const scope = Object.assign({}, builtinVars(), vars, {
       序号: padSeq(seq, total),
     });
-    const text = fillTemplate(s.template, scope).trim();
-    if (!text) return;
 
     const shortSide = Math.min(w, h);
-    const fontSize = Math.max(12, Math.round((shortSide * s.fontSizePct) / 100));
-    ctx.font = `600 ${fontSize}px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
+    const sizeMul = v ? v.sizeMul : 1;
+    const fontSize = Math.max(12, Math.round((shortSide * s.fontSizePct * sizeMul) / 100));
+    const fontKey = (v && v.fontKey) || s.fontKey;
+    const textColor = (v && v.textColor) || s.textColor;
+    const align = s.textAlign || "center";
+    ctx.font = fontString(fontSize, fontKey, s.fontWeight, s.italic);
     ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
+    ctx.textAlign = align;
 
-    const lines = truncateLines(ctx, text, w * 0.86, 3);
+    const lines = buildTextLines(ctx, s.template, scope, w * 0.86);
+    if (!lines.length) return;
     const lineHeight = fontSize * 1.35;
     const padX = fontSize * 0.9;
     const padY = fontSize * 0.7;
@@ -621,23 +808,39 @@
     const barH = lines.length * lineHeight + padY * 2;
     const margin = Math.round(shortSide * 0.03);
 
-    const { x, y } = computeAnchor(s.position, w, h, margin, barW, barH);
+    let { x, y } = computeAnchor(s.position, w, h, margin, barW, barH, s);
+    if (v) {
+      x += v.dx * shortSide;
+      y += v.dy * shortSide;
+    }
+    ({ x, y } = clampAnchor(x, y, w, h, barW, barH));
+
+    // 文字对齐影响底条的横向基准
+    const alignShift =
+      align === "left" ? -barW / 2 + padX : align === "right" ? barW / 2 - padX : 0;
 
     if (s.showBar) {
-      ctx.fillStyle = hexToRgba(s.bgColor, s.opacity / 100);
+      const alpha = clamp((s.opacity * (v ? v.opacityMul : 1)) / 100, 0, 1);
+      ctx.fillStyle = hexToRgba(s.bgColor, alpha);
       roundRect(ctx, x - barW / 2, y - barH / 2, barW, barH, Math.min(12, fontSize * 0.5));
       ctx.fill();
     }
 
-    ctx.fillStyle = s.textColor;
+    ctx.fillStyle = textColor;
+    const textX = x + alignShift;
     let startY = y - (lines.length * lineHeight) / 2 + lineHeight / 2;
     lines.forEach((l) => {
-      ctx.fillText(l, x, startY);
+      ctx.fillText(l, textX, startY);
       startY += lineHeight;
     });
   }
 
-  function computeAnchor(pos, w, h, margin, barW, barH) {
+  function computeAnchor(pos, w, h, margin, barW, barH, s) {
+    if (pos === "custom") {
+      const cx = s && s.customX != null ? Number(s.customX) : 50;
+      const cy = s && s.customY != null ? Number(s.customY) : 88;
+      return { x: (w * cx) / 100, y: (h * cy) / 100 };
+    }
     const halfW = barW / 2,
       halfH = barH / 2;
     const xMap = { left: margin + halfW, center: w / 2, right: w - margin - halfW };
@@ -659,54 +862,73 @@
       emptyTip.style.display = "flex";
       previewName.textContent = "未选择图片";
       previewMeta.textContent = "";
+      updateNamePreview();
       return;
     }
     previewCanvas.style.display = "block";
     emptyTip.style.display = "none";
 
     const s = state.settings;
-    const entries = mappedEntries();
     let vars = varsFromEntry(null);
     let seq = state.currentIndex + 1;
     let total = state.images.length;
     let note = `第 ${state.currentIndex + 1} / ${state.images.length} 张`;
+    let variation = null;
+
+    // 与导出共用同一套任务，预览和成品保证一致
+    const { jobs } = computeJobs();
+    const job = rosterActive() && s.batchMode === "one-to-many"
+      ? jobs[0]
+      : jobs.find((j) => j.img === item) || jobs[0];
+    if (job) {
+      vars = job.vars;
+      seq = job.seq;
+      total = job.total;
+      variation = job.variation;
+    }
 
     if (rosterActive() && s.batchMode === "one-to-many") {
-      vars = varsFromEntry(entries[0]);
-      seq = 1;
-      total = entries.length;
-      note = `批量预览：${entries.length} 人各出一张（示例为第 1 人）`;
+      note = `批量预览：${total} 人各出一张（示例为第 1 人）`;
     } else if (rosterActive() && s.batchMode === "one-to-one") {
-      if (s.matchBy === "filename") {
-        const e = matchByFilename(item.name, entries);
-        if (e) {
-          vars = varsFromEntry(e);
-          note = `已匹配：${e["姓名"] || e["学号"] || "?"}`;
-        } else {
-          note = "⚠ 未匹配到学生";
-        }
-      } else {
-        const e = entries[state.currentIndex];
-        if (e) {
-          vars = varsFromEntry(e);
-          note = `对应第 ${state.currentIndex + 1} 位：${e["姓名"] || e["学号"] || "?"}`;
-        }
-      }
-      total = entries.length;
+      const who = (vars && (vars["姓名"] || vars["学号"])) || "?";
+      note =
+        s.matchBy === "filename"
+          ? job
+            ? `已匹配：${who}`
+            : "未匹配到学生（这张会被跳过）"
+          : `对应第 ${seq} 位：${who}`;
     }
 
     previewName.textContent = item.name;
     previewMeta.textContent = note;
     previewCanvas.width = item.imgEl.naturalWidth;
     previewCanvas.height = item.imgEl.naturalHeight;
-    drawAnnotated(ctx, item.imgEl, vars, seq, total);
+    drawAnnotated(ctx, item.imgEl, vars, seq, total, variation);
+    updateNamePreview();
   }
 
   // ---------- 导出 ----------
   function buildOutputName(vars, seq, total, ext) {
-    const scope = Object.assign({}, vars, { 序号: padSeq(seq, total) });
+    const scope = Object.assign({}, builtinVars(), vars, { 序号: padSeq(seq, total) });
     const base = fillTemplate(state.settings.nameTemplate, scope);
     return `${sanitizeFilePart(base) || `snapmark_${seq}`}.${ext}`;
+  }
+
+  /** 导出文件名实时预览，避免模板写错却到导出后才发现 */
+  function updateNamePreview() {
+    const el = $("name-preview");
+    if (!el) return;
+    const job = currentPreviewJob();
+    if (!job) {
+      el.textContent = "文件名预览：（导入图片后显示）";
+      return;
+    }
+    const ext = state.settings.outFormat === "jpeg" ? "jpg" : "png";
+    const name = buildOutputName(job.vars, job.seq, job.total, ext);
+    const bare = name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_\s.．（）()]/g, "");
+    el.textContent = bare
+      ? `文件名预览：${name}`
+      : "文件名预览：（还没有可用数据，先导入花名册或填写下面的字段）";
   }
 
   function canvasToBlob(canvas, format) {
@@ -744,7 +966,7 @@
     for (const job of jobs) {
       off.width = job.img.imgEl.naturalWidth;
       off.height = job.img.imgEl.naturalHeight;
-      drawAnnotated(octx, job.img.imgEl, job.vars, job.seq, job.total);
+      drawAnnotated(octx, job.img.imgEl, job.vars, job.seq, job.total, job.variation);
       const blob = await canvasToBlob(off, s.outFormat);
 
       let name = buildOutputName(job.vars, job.seq, job.total, ext);
@@ -781,7 +1003,14 @@
     const off = document.createElement("canvas");
     off.width = job.img.imgEl.naturalWidth;
     off.height = job.img.imgEl.naturalHeight;
-    drawAnnotated(off.getContext("2d"), job.img.imgEl, job.vars, job.seq, job.total);
+    drawAnnotated(
+      off.getContext("2d"),
+      job.img.imgEl,
+      job.vars,
+      job.seq,
+      job.total,
+      job.variation
+    );
     const blob = await canvasToBlob(off, s.outFormat);
     downloadBlob(blob, buildOutputName(job.vars, job.seq, job.total, ext));
   }
@@ -809,6 +1038,146 @@
     btnExport.textContent = jobs.length > 1 ? `导出 ZIP（${jobs.length} 张）` : "导出 ZIP";
   }
 
+  // ---------- 模板与字段 ----------
+  const TPL_PRESETS = [
+    { label: "一行：姓名 学号 班级", text: "{姓名} {学号} {班级}" },
+    { label: "两行：姓名 / 学号", text: "{姓名}\n{学号}" },
+    { label: "两行：姓名 / 班级 学号", text: "{姓名}\n{班级} {学号}" },
+    { label: "两行：姓名 / 日期", text: "{姓名}\n{日期}" },
+    { label: "两行：姓名 / 是否成功", text: "{姓名}\n{是否成功}" },
+    { label: "三行：姓名 / 班级 / 日期", text: "{姓名}\n{班级}\n{日期}" },
+    { label: "带序号：序号. 姓名", text: "{序号}. {姓名}" },
+  ];
+
+  /** 当前可用的全部变量：内置 + 花名册所有列 + 单张模式字段 */
+  function availableVariables() {
+    const out = [];
+    const push = (k) => {
+      if (k && out.indexOf(k) === -1) out.push(k);
+    };
+    ["序号", "名单序号", "日期", "时间", "日期时间"].forEach(push);
+    const r = state.settings.roster;
+    if (r && r.columns) {
+      r.columns.forEach(push);
+      // 「列的对应关系」映射出的统一字段，花名册里叫什么列都一定能用
+      ["姓名", "学号", "班级"].forEach(push);
+    }
+    Object.keys(state.settings.meta || {}).forEach(push);
+    return out;
+  }
+
+  function renderVarChips() {
+    const box = $("var-chips");
+    if (!box) return;
+    box.innerHTML = "";
+    availableVariables().forEach((k) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.textContent = "{" + k + "}";
+      b.title = "插入到模板光标处";
+      b.addEventListener("click", () => insertIntoTemplate("{" + k + "}"));
+      box.appendChild(b);
+    });
+  }
+
+  function insertIntoTemplate(text) {
+    const ta = $("tpl");
+    const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+    const end = ta.selectionEnd == null ? ta.value.length : ta.selectionEnd;
+    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+    const pos = start + text.length;
+    ta.focus();
+    ta.setSelectionRange(pos, pos);
+    state.settings.template = ta.value;
+    saveSettings();
+    renderPreview();
+    updateButtons();
+  }
+
+  function renderPresets() {
+    const box = $("tpl-presets");
+    if (!box) return;
+    box.innerHTML = "";
+    TPL_PRESETS.forEach((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.textContent = p.label;
+      b.title = p.text.replace(/\n/g, " ⏎ ");
+      b.addEventListener("click", () => {
+        $("tpl").value = p.text;
+        state.settings.template = p.text;
+        saveSettings();
+        renderPreview();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  /** 单张模式的字段行：字段名可改、可增、可删 */
+  function renderMetaFields() {
+    const box = $("meta-fields");
+    if (!box) return;
+    box.innerHTML = "";
+    Object.keys(state.settings.meta || {}).forEach((key) => {
+      const row = document.createElement("div");
+      row.className = "meta-row";
+
+      const kInput = document.createElement("input");
+      kInput.type = "text";
+      kInput.className = "key";
+      kInput.value = key;
+      kInput.placeholder = "字段名";
+      kInput.addEventListener("change", () => {
+        const nk = kInput.value.trim();
+        const meta = state.settings.meta;
+        if (!nk || nk === key || nk in meta) {
+          kInput.value = key;
+          return;
+        }
+        const next = {};
+        Object.keys(meta).forEach((k) => {
+          next[k === key ? nk : k] = meta[k];
+        });
+        state.settings.meta = next;
+        saveSettings();
+        renderMetaFields();
+        renderVarChips();
+        renderPreview();
+      });
+
+      const vInput = document.createElement("input");
+      vInput.type = "text";
+      vInput.value = state.settings.meta[key] || "";
+      vInput.placeholder = "值";
+      vInput.addEventListener("input", () => {
+        state.settings.meta[key] = vInput.value;
+        saveSettings();
+        renderPreview();
+        updateButtons();
+      });
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "del";
+      del.textContent = "×";
+      del.title = "删除该字段";
+      del.addEventListener("click", () => {
+        delete state.settings.meta[key];
+        saveSettings();
+        renderMetaFields();
+        renderVarChips();
+        renderPreview();
+      });
+
+      row.appendChild(kInput);
+      row.appendChild(vInput);
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
   // ---------- 设置持久化 ----------
   function saveSettings() {
     try {
@@ -827,6 +1196,14 @@
       const s = JSON.parse(raw);
       Object.assign(state.settings, s);
       if (s.meta) state.settings.meta = Object.assign({ 姓名: "", 学号: "", 班级: "" }, s.meta);
+      state.settings.random = Object.assign({}, RANDOM_DEFAULTS, s.random || {});
+      if (!Array.isArray(state.settings.random.fontPool)) {
+        state.settings.random.fontPool = RANDOM_DEFAULTS.fontPool.slice();
+      }
+      if (!FONTS[state.settings.fontKey]) state.settings.fontKey = "yahei";
+      if (state.settings.position !== "custom" && !/^(top|center|bottom)-(left|center|right)$/.test(state.settings.position)) {
+        state.settings.position = "bottom-center";
+      }
     } catch (_) {}
   }
 
@@ -834,9 +1211,6 @@
     const s = state.settings;
     $("tpl").value = s.template;
     $("name-tpl").value = s.nameTemplate;
-    $("meta-name").value = s.meta["姓名"] || "";
-    $("meta-id").value = s.meta["学号"] || "";
-    $("meta-cls").value = s.meta["班级"] || "";
     $("font-size").value = s.fontSizePct;
     $("font-size-val").textContent = s.fontSizePct;
     $("opacity").value = s.opacity;
@@ -844,15 +1218,156 @@
     $("text-color").value = s.textColor;
     $("bg-color").value = s.bgColor;
     $("show-bar").checked = s.showBar;
+    $("italic").checked = !!s.italic;
+    $("font-family").value = s.fontKey;
+    $("font-weight").value = String(s.fontWeight || "600");
+    $("text-align").value = s.textAlign || "center";
     $("out-format").value = s.outFormat;
     $("match-by").value = s.matchBy;
     $("export-limit").value = s.exportLimit || "";
+    $("pos-x").value = s.customX;
+    $("pos-x-val").textContent = Math.round(s.customX);
+    $("pos-y").value = s.customY;
+    $("pos-y-val").textContent = Math.round(s.customY);
+
+    const rd = s.random;
+    $("random-enabled").checked = !!rd.enabled;
+    $("random-size").value = rd.sizePct;
+    $("random-size-val").textContent = rd.sizePct;
+    $("random-pos").value = rd.posPct;
+    $("random-pos-val").textContent = rd.posPct;
+    $("random-opacity").value = rd.opacityPct;
+    $("random-opacity-val").textContent = rd.opacityPct;
+    $("random-color").checked = !!rd.color;
+    $("random-font").checked = !!rd.font;
+    $("random-seed").value = rd.seed;
+
     document.querySelectorAll('input[name="batch-mode"]').forEach((r) => {
       r.checked = r.value === s.batchMode;
     });
     document.querySelectorAll("#pos-grid button").forEach((b) => {
       b.classList.toggle("active", b.dataset.pos === s.position);
     });
+    $("custom-pos").hidden = s.position !== "custom";
+    updateRandomBadge();
+    renderMetaFields();
+    renderVarChips();
+    renderPresets();
+    renderFontPool();
+  }
+
+  function updateRandomBadge() {
+    const on = !!state.settings.random.enabled;
+    const badge = $("random-badge");
+    badge.textContent = on ? "已开启" : "已关闭";
+    badge.className = "badge" + (on ? " ok" : "");
+    $("random-body").classList.toggle("off", !on);
+  }
+
+  function renderFontPool() {
+    const box = $("font-pool");
+    if (!box) return;
+    const pool = state.settings.random.fontPool || [];
+    box.innerHTML = "";
+    Object.keys(FONTS).forEach((key) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (pool.indexOf(key) !== -1 ? " on" : "");
+      b.textContent = FONTS[key].label;
+      b.style.fontFamily = FONTS[key].css;
+      b.addEventListener("click", () => {
+        const list = state.settings.random.fontPool;
+        const i = list.indexOf(key);
+        if (i === -1) list.push(key);
+        else if (list.length > 1) list.splice(i, 1);
+        else {
+          toast("至少保留一种字体");
+          return;
+        }
+        saveSettings();
+        renderFontPool();
+        renderPreview();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function renderFontSelect() {
+    const sel = $("font-family");
+    if (!sel || sel.options.length) return;
+    Object.keys(FONTS).forEach((key) => {
+      const o = document.createElement("option");
+      o.value = key;
+      o.textContent = FONTS[key].label;
+      o.style.fontFamily = FONTS[key].css;
+      sel.appendChild(o);
+    });
+  }
+
+  /** 预览用的当前任务：和导出时的取法保持一致，保证所见即所得 */
+  function currentPreviewJob() {
+    const item = state.images[state.currentIndex];
+    if (!item) return null;
+    const s = state.settings;
+    const { jobs } = computeJobs();
+    if (!jobs.length) return null;
+    if (rosterActive() && s.batchMode === "one-to-many") return jobs[0];
+    return jobs.find((j) => j.img === item) || jobs[0];
+  }
+
+  /** 在预览图上按住拖动即可改变文字位置 */
+  function bindCanvasDrag() {
+    const wrap = previewCanvas.parentElement;
+    let dragging = false;
+
+    const applyPoint = (e) => {
+      const rect = previewCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height || !previewCanvas.width) return;
+      const px = ((e.clientX - rect.left) / rect.width) * previewCanvas.width;
+      const py = ((e.clientY - rect.top) / rect.height) * previewCanvas.height;
+      const job = currentPreviewJob();
+      const v = job && job.variation;
+      const shortSide = Math.min(previewCanvas.width, previewCanvas.height);
+      const ax = px - (v ? v.dx * shortSide : 0);
+      const ay = py - (v ? v.dy * shortSide : 0);
+      state.settings.customX = Math.round(clamp((ax / previewCanvas.width) * 100, 0, 100));
+      state.settings.customY = Math.round(clamp((ay / previewCanvas.height) * 100, 0, 100));
+      state.settings.position = "custom";
+      $("pos-x").value = state.settings.customX;
+      $("pos-x-val").textContent = state.settings.customX;
+      $("pos-y").value = state.settings.customY;
+      $("pos-y-val").textContent = state.settings.customY;
+      $("custom-pos").hidden = false;
+      document
+        .querySelectorAll("#pos-grid button")
+        .forEach((b) => b.classList.toggle("active", b.dataset.pos === "custom"));
+      saveSettings();
+      renderPreview();
+    };
+
+    wrap.classList.add("draggable");
+    previewCanvas.addEventListener("pointerdown", (e) => {
+      if (state.currentIndex < 0) return;
+      dragging = true;
+      wrap.classList.add("dragging");
+      try {
+        previewCanvas.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      applyPoint(e);
+    });
+    previewCanvas.addEventListener("pointermove", (e) => {
+      if (dragging) applyPoint(e);
+    });
+    const end = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      wrap.classList.remove("dragging");
+      try {
+        previewCanvas.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    };
+    previewCanvas.addEventListener("pointerup", end);
+    previewCanvas.addEventListener("pointercancel", end);
   }
 
   // ---------- 名单文件导入 ----------
@@ -918,9 +1433,6 @@
     const liveInputs = [
       ["tpl", (v) => (state.settings.template = v)],
       ["name-tpl", (v) => (state.settings.nameTemplate = v)],
-      ["meta-name", (v) => (state.settings.meta["姓名"] = v)],
-      ["meta-id", (v) => (state.settings.meta["学号"] = v)],
-      ["meta-cls", (v) => (state.settings.meta["班级"] = v)],
     ];
     liveInputs.forEach(([id, setter]) => {
       $(id).addEventListener("input", (e) => {
@@ -969,10 +1481,105 @@
         document
           .querySelectorAll("#pos-grid button")
           .forEach((x) => x.classList.toggle("active", x === b));
+        $("custom-pos").hidden = b.dataset.pos !== "custom";
         saveSettings();
         renderPreview();
       });
     });
+
+    // ---------- 字体 ----------
+    $("font-family").addEventListener("change", (e) => {
+      state.settings.fontKey = e.target.value;
+      saveSettings();
+      renderPreview();
+    });
+    $("font-weight").addEventListener("change", (e) => {
+      state.settings.fontWeight = e.target.value;
+      saveSettings();
+      renderPreview();
+    });
+    $("text-align").addEventListener("change", (e) => {
+      state.settings.textAlign = e.target.value;
+      saveSettings();
+      renderPreview();
+    });
+    $("italic").addEventListener("change", (e) => {
+      state.settings.italic = e.target.checked;
+      saveSettings();
+      renderPreview();
+    });
+
+    // ---------- 自定义位置 ----------
+    ["pos-x", "pos-y"].forEach((id) => {
+      $(id).addEventListener("input", (e) => {
+        const val = Number(e.target.value);
+        if (id === "pos-x") {
+          state.settings.customX = val;
+          $("pos-x-val").textContent = Math.round(val);
+        } else {
+          state.settings.customY = val;
+          $("pos-y-val").textContent = Math.round(val);
+        }
+        saveSettings();
+        renderPreview();
+      });
+    });
+
+    // ---------- 批量随机 ----------
+    $("random-enabled").addEventListener("change", (e) => {
+      state.settings.random.enabled = e.target.checked;
+      updateRandomBadge();
+      saveSettings();
+      renderPreview();
+    });
+    [
+      ["random-size", "sizePct", "random-size-val"],
+      ["random-pos", "posPct", "random-pos-val"],
+      ["random-opacity", "opacityPct", "random-opacity-val"],
+    ].forEach(([id, key, valId]) => {
+      $(id).addEventListener("input", (e) => {
+        const val = Number(e.target.value);
+        state.settings.random[key] = val;
+        $(valId).textContent = val;
+        saveSettings();
+        renderPreview();
+      });
+    });
+    $("random-color").addEventListener("change", (e) => {
+      state.settings.random.color = e.target.checked;
+      saveSettings();
+      renderPreview();
+    });
+    $("random-font").addEventListener("change", (e) => {
+      state.settings.random.font = e.target.checked;
+      saveSettings();
+      renderPreview();
+    });
+    $("random-seed").addEventListener("input", (e) => {
+      state.settings.random.seed = e.target.value;
+      saveSettings();
+      renderPreview();
+    });
+    $("btn-reshuffle").addEventListener("click", () => {
+      state.settings.random.seed = String(Math.floor(Math.random() * 100000) + 1);
+      $("random-seed").value = state.settings.random.seed;
+      saveSettings();
+      renderPreview();
+      toast("已换一批随机效果");
+    });
+    $("btn-add-field").addEventListener("click", () => {
+      const meta = state.settings.meta;
+      let i = 1;
+      while (`字段${i}` in meta) i++;
+      meta[`字段${i}`] = "";
+      saveSettings();
+      renderMetaFields();
+      renderVarChips();
+      const rows = $("meta-fields").querySelectorAll(".meta-row input.key");
+      if (rows.length) rows[rows.length - 1].focus();
+    });
+
+    bindCanvasDrag();
 
     // 批量名单相关
     $("btn-import-roster").addEventListener("click", () => $("roster-input").click());
@@ -1029,6 +1636,7 @@
           if (!state.settings.roster) return;
           state.settings.roster.map[key] = parseInt(e.target.value, 10);
           saveSettings();
+          renderVarChips();
           renderPreview();
           updateButtons();
         });
@@ -1064,6 +1672,7 @@
 
   // ---------- 启动 ----------
   function init() {
+    renderFontSelect();
     loadSettings();
     syncControlsFromSettings();
     bindEvents();

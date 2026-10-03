@@ -31,7 +31,12 @@ const fs = require("fs");
     () => document.querySelectorAll("#image-list li").length === 1,
     { timeout: 8000 }
   );
-  await p1.fill("#meta-name", "李四");
+  await p1
+    .locator("#meta-fields .meta-row")
+    .nth(0)
+    .locator("input")
+    .nth(1)
+    .fill("李四");
   await p1.waitForTimeout(300);
   ok("file:// 打开可加载图片", (await p1.textContent("#preview-meta")).includes("1 / 1"));
   ok("file:// 无 JS 报错", errs.length === 0, errs.join(" ; "));

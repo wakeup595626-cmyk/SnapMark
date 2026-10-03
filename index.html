@@ -38,30 +38,33 @@
     </section>
 
     <section class="card">
-      <h2>标注信息</h2>
+      <h2>文字模板</h2>
       <div class="field">
-        <label for="tpl">文字模板</label>
-        <input type="text" id="tpl" value="{姓名} {学号} {班级}" placeholder="例如：{姓名} {学号} {班级}">
-        <p class="hint">支持变量：<code>{姓名}</code> <code>{学号}</code> <code>{班级}</code> <code>{序号}</code></p>
-      </div>
-      <div class="grid-2">
-        <div class="field">
-          <label for="meta-name">姓名</label>
-          <input type="text" id="meta-name" placeholder="张三">
-        </div>
-        <div class="field">
-          <label for="meta-id">学号</label>
-          <input type="text" id="meta-id" placeholder="2023123456">
-        </div>
+        <label for="tpl">图片上的文字（回车换行 = 图上换行）</label>
+        <textarea id="tpl" rows="3" placeholder="{姓名} {学号} {班级}">{姓名} {学号} {班级}</textarea>
+        <p class="hint">变量用 <code>{}</code> 包住列名即可，<strong>花名册里的任意列都能用</strong>；某行写不下会自动折行。</p>
       </div>
       <div class="field">
-        <label for="meta-cls">班级</label>
-        <input type="text" id="meta-cls" placeholder="软件2301班">
+        <label>可用变量（点一下插入到光标处）</label>
+        <div class="chip-list" id="var-chips"></div>
+      </div>
+      <div class="field">
+        <label>常用模板（点一下套用）</label>
+        <div class="chip-list" id="tpl-presets"></div>
       </div>
       <div class="field">
         <label for="name-tpl">导出文件名模板</label>
         <input type="text" id="name-tpl" value="{姓名}_{学号}_{班级}_{序号}" placeholder="{姓名}_{学号}_{序号}">
+        <p class="hint" id="name-preview">文件名预览：（导入图片后显示）</p>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>单张模式字段</h2>
+      <p class="hint" style="margin-top:-4px">不用花名册、只处理一张图时，在这里填值。字段名可以改，也可以自己加，例如「日期」「是否成功」。</p>
+      <div id="meta-fields"></div>
+      <button id="btn-add-field" class="btn btn-sm">＋ 添加字段</button>
+      <p class="hint">批量名单模式下，同名列会优先用花名册里的值。</p>
     </section>
 
     <section class="card">
@@ -119,7 +122,7 @@
     <section class="card">
       <h2>样式</h2>
       <div class="field">
-        <label>位置</label>
+        <label>文字位置</label>
         <div class="pos-grid" id="pos-grid">
           <button data-pos="top-left" title="左上">左上</button>
           <button data-pos="top-center" title="上中">上中</button>
@@ -130,6 +133,19 @@
           <button data-pos="bottom-left" title="左下">左下</button>
           <button data-pos="bottom-center" class="active" title="下中">下中</button>
           <button data-pos="bottom-right" title="右下">右下</button>
+          <button data-pos="custom" id="pos-custom-btn" class="span-3" title="自定义位置">自定义位置（可在预览图上拖动）</button>
+        </div>
+        <div id="custom-pos" class="custom-pos" hidden>
+          <div class="grid-2">
+            <div class="field">
+              <label for="pos-x">水平位置 <span id="pos-x-val">50</span>%</label>
+              <input type="range" id="pos-x" min="0" max="100" value="50">
+            </div>
+            <div class="field">
+              <label for="pos-y">垂直位置 <span id="pos-y-val">50</span>%</label>
+              <input type="range" id="pos-y" min="0" max="100" value="50">
+            </div>
+          </div>
         </div>
       </div>
       <div class="grid-2">
@@ -140,6 +156,30 @@
         <div class="field">
           <label for="opacity">底条不透明度 <span id="opacity-val">55</span>%</label>
           <input type="range" id="opacity" min="0" max="100" value="55">
+        </div>
+      </div>
+      <div class="field">
+        <label for="font-family">字体</label>
+        <select id="font-family"></select>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="font-weight">字重</label>
+          <select id="font-weight">
+            <option value="400">常规</option>
+            <option value="500">中等</option>
+            <option value="600" selected>偏粗</option>
+            <option value="700">加粗</option>
+            <option value="800">特粗</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="text-align">文字对齐</label>
+          <select id="text-align">
+            <option value="center" selected>居中</option>
+            <option value="left">左对齐</option>
+            <option value="right">右对齐</option>
+          </select>
         </div>
       </div>
       <div class="grid-2">
@@ -155,12 +195,53 @@
       <div class="field checkbox-field">
         <label><input type="checkbox" id="show-bar" checked> 显示底条</label>
       </div>
+      <div class="field checkbox-field">
+        <label><input type="checkbox" id="italic"> 文字倾斜</label>
+      </div>
       <div class="field">
         <label for="out-format">输出格式</label>
         <select id="out-format">
           <option value="png" selected>PNG（无损）</option>
           <option value="jpeg">JPEG（更小）</option>
         </select>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>批量随机 <span id="random-badge" class="badge ok">已开启</span></h2>
+      <div class="field checkbox-field">
+        <label><input type="checkbox" id="random-enabled" checked> 每张图随机变化（多人截图不重样）</label>
+      </div>
+      <div id="random-body">
+        <div class="grid-2">
+          <div class="field">
+            <label for="random-size">字号浮动 <span id="random-size-val">12</span>%</label>
+            <input type="range" id="random-size" min="0" max="40" value="12">
+          </div>
+          <div class="field">
+            <label for="random-pos">位置浮动 <span id="random-pos-val">6</span>%</label>
+            <input type="range" id="random-pos" min="0" max="25" value="6">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="random-opacity">底条深浅浮动 <span id="random-opacity-val">15</span>%</label>
+            <input type="range" id="random-opacity" min="0" max="60" value="15">
+          </div>
+          <div class="field">
+            <label for="random-seed">随机种子</label>
+            <input type="text" id="random-seed" value="1">
+          </div>
+        </div>
+        <div class="checkbox-row">
+          <label><input type="checkbox" id="random-color" checked> 文字颜色随机</label>
+          <label><input type="checkbox" id="random-font" checked> 字体随机</label>
+        </div>
+        <div class="field">
+          <label>随机字体池（随机时从这里挑）</label>
+          <div class="chip-list" id="font-pool"></div>
+        </div>
+        <button id="btn-reshuffle" class="btn btn-sm">换一批随机</button>
       </div>
     </section>
 

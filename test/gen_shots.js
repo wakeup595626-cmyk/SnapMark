@@ -40,7 +40,12 @@ const fs = require("fs");
     () => document.querySelectorAll("#image-list li").length === 1,
     { timeout: 9000 }
   );
-  await mp.fill("#meta-name", "张三");
+  await mp
+    .locator("#meta-fields .meta-row")
+    .nth(0)
+    .locator("input")
+    .nth(1)
+    .fill("张三");
   await mp.waitForTimeout(500);
   await mp.screenshot({ path: path.join(shotDir, "mobile.png"), fullPage: true });
   await mctx.close();

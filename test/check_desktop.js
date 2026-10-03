@@ -1,11 +1,11 @@
-// 验证桌面副本的花名册批量功能可用（file:// 直接打开）
+// 验证「双击 index.html（file://）」也能跑完整的批量 + 随机导出
 const { chromium } = require("playwright");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
 (async () => {
-  const dir = "D:/Users/25653/Desktop/SnapMark";
+  const dir = path.resolve(__dirname, "..").replace(/\\/g, "/");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "snapmark-desktop-"));
   const fx = path.join(__dirname, "fixtures");
 
@@ -32,7 +32,7 @@ const os = require("os");
     () => document.getElementById("roster-badge").textContent.includes("80"),
     { timeout: 9000 }
   );
-  ok("桌面版：导入花名册 80 人", true, await page.textContent("#roster-badge"));
+  ok("本地双击版：导入花名册 80 人", true, await page.textContent("#roster-badge"));
 
   // 一图 × 80 人
   await page.setInputFiles("#file-input", [path.join(fx, "网页截图.png")]);
@@ -42,7 +42,7 @@ const os = require("os");
   );
   await page.check('input[name="batch-mode"][value="one-to-many"]');
   await page.waitForTimeout(500);
-  ok("桌面版：显示将生成 80 张", (await page.textContent("#export-count")).includes("80"));
+  ok("本地双击版：显示将生成 80 张", (await page.textContent("#export-count")).includes("80"));
 
   const [dl] = await Promise.all([
     page.waitForEvent("download"),
@@ -50,8 +50,8 @@ const os = require("os");
   ]);
   const out = path.join(tmp, dl.suggestedFilename());
   await dl.saveAs(out);
-  ok("桌面版：导出 80 张 ZIP", fs.statSync(out).size > 100000, Math.round(fs.statSync(out).size / 1024) + "KB");
-  ok("桌面版：无 JS 报错", errs.length === 0, errs.slice(0, 2).join(";"));
+  ok("本地双击版：导出 80 张 ZIP", fs.statSync(out).size > 100000, Math.round(fs.statSync(out).size / 1024) + "KB");
+  ok("本地双击版：无 JS 报错", errs.length === 0, errs.slice(0, 2).join(";"));
 
   await browser.close();
   console.log("\nZIP=" + out);
