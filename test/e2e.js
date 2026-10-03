@@ -3,6 +3,7 @@ const { chromium } = require("playwright");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { suppressOnboard } = require("./_helpers");
 
 (async () => {
   const base = "http://localhost:8765";
@@ -27,6 +28,7 @@ const os = require("os");
   };
 
   try {
+    await suppressOnboard(page);
     await page.goto(base, { waitUntil: "networkidle" });
 
     // 1. 页面基本结构

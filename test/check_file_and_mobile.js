@@ -2,6 +2,7 @@
 const { chromium } = require("playwright");
 const path = require("path");
 const fs = require("fs");
+const { suppressOnboard } = require("./_helpers");
 
 (async () => {
   const projectDir = path.resolve(__dirname, "..");
@@ -25,6 +26,7 @@ const fs = require("fs");
   p1.on("console", (m) => {
     if (m.type() === "error") errs.push(m.text());
   });
+  await suppressOnboard(p1);
   await p1.goto(fileUrl, { waitUntil: "load" });
   await p1.setInputFiles("#file-input", imgs);
   await p1.waitForFunction(
@@ -50,6 +52,7 @@ const fs = require("fs");
   // --- 手机窄屏 ---
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const p2 = await ctx.newPage();
+  await suppressOnboard(p2);
   await p2.goto("http://localhost:8765", { waitUntil: "networkidle" });
   await p2.setInputFiles("#file-input", imgs);
   await p2.waitForFunction(

@@ -40,6 +40,7 @@
       batchMode: "none",
       matchBy: "order",
       exportLimit: "",
+      rosterOpen: false,
       roster: null, // { columns: [], rows: [{}], map: {name,id,cls}, hasHeader: bool }
       random: Object.assign({}, RANDOM_DEFAULTS, { fontPool: RANDOM_DEFAULTS.fontPool.slice() }),
     },
@@ -47,6 +48,7 @@
 
   const STORE_KEY = "snapmark.settings.v2";
   const MAX_PERSIST_ROWS = 2000;
+  const ONBOARD_KEY = "snapmark.onboarded.v1";
 
   // 字体表：全部使用系统字体，不联网加载，保证离线可用
   const FONTS = {
@@ -452,6 +454,9 @@
 
   function renderList() {
     imageList.innerHTML = "";
+    $("step1-badge").textContent = state.images.length ? `已放 ${state.images.length} 张` : "还没放图";
+    $("step1-badge").className = "badge" + (state.images.length ? " ok" : "");
+    $("image-list-wrap").hidden = !state.images.length;
     state.images.forEach((item, idx) => {
       const li = document.createElement("li");
       li.className = idx === state.currentIndex ? "active" : "";
@@ -524,8 +529,16 @@
     const badge = $("roster-badge");
     const preview = $("roster-preview");
     const mapField = $("map-field");
-    const limitField = $("limit-field");
     const matchField = $("match-field");
+
+    // 批量开关：控制名单区与手动字段区的显隐
+    const open = !!state.settings.rosterOpen;
+    $("roster-toggle").checked = open;
+    $("roster-body").hidden = !open;
+    $("meta-section").hidden = open;
+    $("roster-toggle-hint").textContent = open
+      ? "已开启：以花名册为准，上面手动填的字段不生效"
+      : "开了这个，下面这些信息就不用一个个手填了";
 
     if (!rosterActive()) {
       badge.textContent = "未导入";
@@ -533,8 +546,8 @@
       preview.hidden = true;
       preview.innerHTML = "";
       mapField.hidden = true;
-      limitField.hidden = true;
       matchField.hidden = true;
+      $("roster-detail").hidden = true;
       $("btn-clear-roster").disabled = true;
       renderVarChips();
       return;
@@ -542,8 +555,8 @@
 
     badge.textContent = `${r.rows.length} 人`;
     badge.className = "badge ok";
+    $("roster-detail").hidden = false;
     mapField.hidden = false;
-    limitField.hidden = false;
     matchField.hidden = state.settings.batchMode !== "one-to-one";
     $("btn-clear-roster").disabled = false;
 
@@ -1264,6 +1277,15 @@
     $("random-body").classList.toggle("off", !on);
   }
 
+  // ---------- 新手引导 ----------
+  function maybeShowOnboard() {
+    try {
+      if (localStorage.getItem(ONBOARD_KEY)) return;
+    } catch (_) {}
+    const box = $("onboard");
+    if (box) box.hidden = false;
+  }
+
   function renderFontPool() {
     const box = $("font-pool");
     if (!box) return;
@@ -1384,6 +1406,7 @@
       }
       const roster = buildRoster(matrix);
       if (!roster.rows.length) throw new Error("没有解析到数据行");
+      state.settings.rosterOpen = true;
       setRoster(roster);
       toast(`已导入 ${roster.rows.length} 条名单`);
     } catch (e) {
@@ -1597,6 +1620,7 @@
       try {
         const roster = buildRoster(parseDelimited(text, detectDelimiter(text)));
         if (!roster.rows.length) throw new Error("没有解析到数据行");
+        state.settings.rosterOpen = true;
         setRoster(roster);
         toast(`已解析 ${roster.rows.length} 条名单`);
       } catch (e) {
@@ -1607,15 +1631,40 @@
     document.querySelectorAll('input[name="batch-mode"]').forEach((r) => {
       r.addEventListener("change", () => {
         state.settings.batchMode = r.value;
-        if (r.value !== "none" && !rosterActive()) {
-          toast("还没有导入名单，请先导入或粘贴花名册");
-        }
         saveSettings();
         renderRoster();
         renderPreview();
         updateButtons();
       });
     });
+
+    // 批量开关：开了但没名单时，自动弹出文件选择
+    $("roster-toggle").addEventListener("change", (e) => {
+      const open = e.target.checked;
+      state.settings.rosterOpen = open;
+      state.settings.batchMode = open ? "one-to-many" : "none";
+      document.querySelectorAll('input[name="batch-mode"]').forEach((r) => {
+        r.checked = r.value === state.settings.batchMode;
+      });
+      saveSettings();
+      renderRoster();
+      renderPreview();
+      updateButtons();
+      if (open && !rosterActive()) {
+        toast("先选一份花名册（或把 Excel 名单粘贴进来）");
+        $("roster-input").click();
+      }
+    });
+
+    // 新手引导
+    const closeOnboard = () => {
+      $("onboard").hidden = true;
+      try {
+        localStorage.setItem(ONBOARD_KEY, "1");
+      } catch (_) {}
+    };
+    $("btn-onboard-close").addEventListener("click", closeOnboard);
+    $("onboard").querySelector(".onboard-mask").addEventListener("click", closeOnboard);
 
     $("match-by").addEventListener("change", (e) => {
       state.settings.matchBy = e.target.value;
@@ -1674,12 +1723,18 @@
   function init() {
     renderFontSelect();
     loadSettings();
+    // 旧版本存过 batchMode，但没有 rosterOpen 概念，这里补一致
+    if (state.settings.rosterOpen === undefined) {
+      state.settings.rosterOpen = state.settings.batchMode !== "none" && rosterActive();
+    }
+    if (!state.settings.rosterOpen) state.settings.batchMode = "none";
     syncControlsFromSettings();
     bindEvents();
     renderList();
     renderRoster();
     renderPreview();
     updateButtons();
+    maybeShowOnboard();
   }
 
   init();

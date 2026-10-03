@@ -3,6 +3,7 @@ const { chromium } = require("playwright");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { suppressOnboard } = require("./_helpers");
 
 (async () => {
   const dir = path.resolve(__dirname, "..").replace(/\\/g, "/");
@@ -24,6 +25,7 @@ const os = require("os");
     console.log(`${c ? "PASS" : "FAIL"}  ${n}${e ? "  | " + e : ""}`);
   };
 
+  await suppressOnboard(page);
   await page.goto("file:///" + dir + "/index.html", { waitUntil: "load" });
 
   // 导入 80 人花名册

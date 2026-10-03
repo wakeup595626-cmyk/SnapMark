@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const JSZip = require("../vendor/jszip.min.js");
+const { suppressOnboard, openAllDetails } = require("./_helpers");
 
 const BASE = process.env.SNAPMARK_BASE || "http://localhost:8765";
 const fx = path.join(__dirname, "fixtures");
@@ -97,9 +98,11 @@ const fx = path.join(__dirname, "fixtures");
     }, baseImgUrl);
 
   try {
+    await suppressOnboard(page);
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: "networkidle" });
+    await openAllDetails(page);
 
     // ---------- 1. 字体下拉必须有内容 ----------
     const fontOpts = await page.locator("#font-family option").count();

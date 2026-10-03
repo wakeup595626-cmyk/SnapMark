@@ -11,11 +11,10 @@
 <header class="topbar">
   <div class="brand">
     <span class="logo">SnapMark</span>
-    <span class="tagline">批量截图标注 · 纯本地 · 不上传</span>
+    <span class="tagline">给截图写上姓名学号 · 可批量 · 纯本地不上传</span>
   </div>
   <div class="top-actions">
     <span id="export-count" class="export-count" hidden></span>
-    <button id="btn-export" class="btn btn-primary" disabled>导出 ZIP</button>
     <button id="btn-clear" class="btn btn-ghost">清空</button>
   </div>
 </header>
@@ -25,104 +24,109 @@
   <!-- 左侧：控制面板 -->
   <aside class="panel controls">
 
-    <section class="card">
-      <h2>图片</h2>
+    <!-- 第 1 步：放图 -->
+    <section class="card step" id="step-1">
+      <h2><span class="step-num">1</span>放入截图 <span id="step1-badge" class="badge">还没放图</span></h2>
       <div id="dropzone" class="dropzone" tabindex="0">
-        <p>拖拽图片到这里</p>
-        <p class="muted">或点击选择（支持多选）</p>
+        <p class="dz-main">把截图拖到这里，或点一下选择</p>
+        <p class="muted">可多选，也可以继续往里加</p>
         <input type="file" id="file-input" accept="image/*" multiple hidden>
       </div>
-      <div class="image-list-wrap">
+      <div class="image-list-wrap" id="image-list-wrap" hidden>
         <ul id="image-list" class="image-list"></ul>
       </div>
     </section>
 
-    <section class="card">
-      <h2>文字模板</h2>
+    <!-- 第 2 步：写文字 -->
+    <section class="card step" id="step-2">
+      <h2><span class="step-num">2</span>写上什么字</h2>
       <div class="field">
-        <label for="tpl">图片上的文字（回车换行 = 图上换行）</label>
-        <textarea id="tpl" rows="3" placeholder="{姓名} {学号} {班级}">{姓名} {学号} {班级}</textarea>
-        <p class="hint">变量用 <code>{}</code> 包住列名即可，<strong>花名册里的任意列都能用</strong>；某行写不下会自动折行。</p>
-      </div>
-      <div class="field">
-        <label>可用变量（点一下插入到光标处）</label>
-        <div class="chip-list" id="var-chips"></div>
-      </div>
-      <div class="field">
-        <label>常用模板（点一下套用）</label>
+        <label>快捷模板（点一个直接用）</label>
         <div class="chip-list" id="tpl-presets"></div>
       </div>
       <div class="field">
-        <label for="name-tpl">导出文件名模板</label>
-        <input type="text" id="name-tpl" value="{姓名}_{学号}_{班级}_{序号}" placeholder="{姓名}_{学号}_{序号}">
-        <p class="hint" id="name-preview">文件名预览：（导入图片后显示）</p>
+        <label for="tpl">图片上的文字（回车 = 图上换行）</label>
+        <textarea id="tpl" rows="3" placeholder="{姓名} {学号}">{姓名} {学号} {班级}</textarea>
+        <p class="hint">点下面的小标签就能插入，不用手打；花名册里任意一列都能当变量。</p>
+      </div>
+      <div class="field">
+        <label>可用信息（点一下插入）</label>
+        <div class="chip-list" id="var-chips"></div>
+      </div>
+
+      <!-- 单张模式：手动填 -->
+      <div class="field" id="meta-section">
+        <label>这些信息填什么</label>
+        <p class="hint">只处理自己几张图时，在这里把 {姓名}、{学号} 换成真实内容：</p>
+        <div id="meta-fields"></div>
+        <button id="btn-add-field" class="btn btn-sm">＋ 添加字段（如「日期」）</button>
+      </div>
+
+      <!-- 批量名单：默认收起的开关 -->
+      <div class="field batch-switch" id="roster-toggle-row">
+        <label class="switch-label">
+          <input type="checkbox" id="roster-toggle">
+          <span>给全班每人做一张（用花名册批量生成）</span>
+        </label>
+        <p class="hint" id="roster-toggle-hint">开了这个，下面这些信息就不用一个个手填了</p>
+      </div>
+
+      <div id="roster-body" hidden>
+        <div class="field">
+          <label>花名册（Excel / CSV / 直接从表格复制粘贴）</label>
+          <div class="row-actions">
+            <button id="btn-import-roster" class="btn btn-sm">选择花名册文件</button>
+            <button id="btn-clear-roster" class="btn btn-sm btn-ghost" disabled>清除名单</button>
+            <span id="roster-badge" class="badge">未导入</span>
+          </div>
+          <input type="file" id="roster-input" accept=".xlsx,.xls,.csv,.txt,.tsv" hidden>
+          <p class="hint">支持 .xlsx / .csv / .txt；第一行是表头（姓名、学号、班级…），程序会自动认。</p>
+        </div>
+
+        <div class="field">
+          <label for="roster-paste">或把 Excel 里的名单直接粘贴到这</label>
+          <textarea id="roster-paste" rows="3" placeholder="姓名&#9;学号&#9;班级&#10;张三&#9;2023123456&#9;软件2301班"></textarea>
+          <button id="btn-parse-paste" class="btn btn-sm">解析粘贴内容</button>
+        </div>
+
+        <div id="roster-detail" hidden>
+          <div class="field">
+            <label>每人出一张，怎么对应图片？</label>
+            <div class="radio-list">
+              <label><input type="radio" name="batch-mode" value="one-to-many"> <strong>同一张图</strong>，换成每个人的信息（交全班统一截图）</label>
+              <label><input type="radio" name="batch-mode" value="one-to-one"> <strong>我导入了好多图</strong>，每张图各配一个人</label>
+            </div>
+          </div>
+
+          <div class="field" id="match-field" hidden>
+            <label for="match-by">哪张图配哪个人？</label>
+            <select id="match-by">
+              <option value="order">按顺序一一对应（第 1 张图配第 1 个人）</option>
+              <option value="filename">看文件名（文件名里含谁的姓名/学号就配谁）</option>
+            </select>
+          </div>
+
+          <div class="field" id="map-field" hidden>
+            <label>哪一列是姓名 / 学号 / 班级（一般不用改）</label>
+            <div class="map-grid">
+              <span>姓名</span><select id="map-name" class="col-select"></select>
+              <span>学号</span><select id="map-id" class="col-select"></select>
+              <span>班级</span><select id="map-class" class="col-select"></select>
+            </div>
+          </div>
+
+          <div id="roster-preview" class="roster-preview" hidden></div>
+
+          <p class="hint">导入花名册后，手动填的那些字段就不生效了，以花名册为准。</p>
+        </div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>单张模式字段</h2>
-      <p class="hint" style="margin-top:-4px">不用花名册、只处理一张图时，在这里填值。字段名可以改，也可以自己加，例如「日期」「是否成功」。</p>
-      <div id="meta-fields"></div>
-      <button id="btn-add-field" class="btn btn-sm">＋ 添加字段</button>
-      <p class="hint">批量名单模式下，同名列会优先用花名册里的值。</p>
-    </section>
-
-    <section class="card">
-      <h2>批量名单 <span id="roster-badge" class="badge">未导入</span></h2>
-
+    <!-- 第 3 步：调样式 -->
+    <section class="card step" id="step-3">
+      <h2><span class="step-num">3</span>调整样子 <span class="hint-inline">右边实时预览，可直接在图上拖动文字</span></h2>
       <div class="field">
-        <div class="row-actions">
-          <button id="btn-import-roster" class="btn btn-sm">选择文件</button>
-          <button id="btn-clear-roster" class="btn btn-sm btn-ghost" disabled>清空名单</button>
-          <span class="muted">.xlsx / .csv / .txt</span>
-        </div>
-        <input type="file" id="roster-input" accept=".xlsx,.xls,.csv,.txt,.tsv" hidden>
-      </div>
-
-      <div class="field">
-        <label for="roster-paste">或从 Excel 直接复制，粘贴到这里</label>
-        <textarea id="roster-paste" rows="3" placeholder="姓名&#9;学号&#9;班级&#10;张三&#9;2023123456&#9;软件2301班"></textarea>
-        <button id="btn-parse-paste" class="btn btn-sm">解析粘贴内容</button>
-      </div>
-
-      <div class="field">
-        <label>批量模式</label>
-        <div class="radio-list">
-          <label><input type="radio" name="batch-mode" value="none" checked> 关闭（单张模式）</label>
-          <label><input type="radio" name="batch-mode" value="one-to-many"> 一图 × 名单：一张图，每人各出一张</label>
-          <label><input type="radio" name="batch-mode" value="one-to-one"> 图片 × 名单：每张图配一个学生</label>
-        </div>
-      </div>
-
-      <div class="field" id="match-field" hidden>
-        <label for="match-by">图片与学生的对应方式</label>
-        <select id="match-by">
-          <option value="order">按顺序一一对应（按导入顺序）</option>
-          <option value="filename">按文件名匹配（文件名含姓名或学号）</option>
-        </select>
-      </div>
-
-      <div class="field" id="map-field" hidden>
-        <label>列的对应关系（自动识别，可手动改）</label>
-        <div class="map-grid">
-          <span>姓名</span><select id="map-name" class="col-select"></select>
-          <span>学号</span><select id="map-id" class="col-select"></select>
-          <span>班级</span><select id="map-class" class="col-select"></select>
-        </div>
-      </div>
-
-      <div class="field" id="limit-field" hidden>
-        <label for="export-limit">导出数量限制（留空 = 全部）</label>
-        <input type="number" id="export-limit" min="1" placeholder="例如 10">
-      </div>
-
-      <div id="roster-preview" class="roster-preview" hidden></div>
-    </section>
-
-    <section class="card">
-      <h2>样式</h2>
-      <div class="field">
-        <label>文字位置</label>
+        <label>文字放哪</label>
         <div class="pos-grid" id="pos-grid">
           <button data-pos="top-left" title="左上">左上</button>
           <button data-pos="top-center" title="上中">上中</button>
@@ -133,7 +137,7 @@
           <button data-pos="bottom-left" title="左下">左下</button>
           <button data-pos="bottom-center" class="active" title="下中">下中</button>
           <button data-pos="bottom-right" title="右下">右下</button>
-          <button data-pos="custom" id="pos-custom-btn" class="span-3" title="自定义位置">自定义位置（可在预览图上拖动）</button>
+          <button data-pos="custom" id="pos-custom-btn" class="span-3" title="自定义位置">自定义（滑杆或在预览图上拖）</button>
         </div>
         <div id="custom-pos" class="custom-pos" hidden>
           <div class="grid-2">
@@ -154,32 +158,8 @@
           <input type="range" id="font-size" min="2" max="12" value="4">
         </div>
         <div class="field">
-          <label for="opacity">底条不透明度 <span id="opacity-val">55</span>%</label>
-          <input type="range" id="opacity" min="0" max="100" value="55">
-        </div>
-      </div>
-      <div class="field">
-        <label for="font-family">字体</label>
-        <select id="font-family"></select>
-      </div>
-      <div class="grid-2">
-        <div class="field">
-          <label for="font-weight">字重</label>
-          <select id="font-weight">
-            <option value="400">常规</option>
-            <option value="500">中等</option>
-            <option value="600" selected>偏粗</option>
-            <option value="700">加粗</option>
-            <option value="800">特粗</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="text-align">文字对齐</label>
-          <select id="text-align">
-            <option value="center" selected>居中</option>
-            <option value="left">左对齐</option>
-            <option value="right">右对齐</option>
-          </select>
+          <label for="font-family">字体</label>
+          <select id="font-family"></select>
         </div>
       </div>
       <div class="grid-2">
@@ -192,57 +172,103 @@
           <input type="color" id="bg-color" value="#000000">
         </div>
       </div>
-      <div class="field checkbox-field">
-        <label><input type="checkbox" id="show-bar" checked> 显示底条</label>
-      </div>
-      <div class="field checkbox-field">
-        <label><input type="checkbox" id="italic"> 文字倾斜</label>
-      </div>
-      <div class="field">
-        <label for="out-format">输出格式</label>
-        <select id="out-format">
-          <option value="png" selected>PNG（无损）</option>
-          <option value="jpeg">JPEG（更小）</option>
-        </select>
-      </div>
-    </section>
 
-    <section class="card">
-      <h2>批量随机 <span id="random-badge" class="badge ok">已开启</span></h2>
-      <div class="field checkbox-field">
-        <label><input type="checkbox" id="random-enabled" checked> 每张图随机变化（多人截图不重样）</label>
-      </div>
-      <div id="random-body">
+      <details class="adv" id="style-more">
+        <summary>更多样式（字重、对齐、底条透明度…）</summary>
         <div class="grid-2">
           <div class="field">
-            <label for="random-size">字号浮动 <span id="random-size-val">12</span>%</label>
-            <input type="range" id="random-size" min="0" max="40" value="12">
+            <label for="font-weight">字重</label>
+            <select id="font-weight">
+              <option value="400">常规</option>
+              <option value="500">中等</option>
+              <option value="600" selected>偏粗</option>
+              <option value="700">加粗</option>
+              <option value="800">特粗</option>
+            </select>
           </div>
           <div class="field">
-            <label for="random-pos">位置浮动 <span id="random-pos-val">6</span>%</label>
-            <input type="range" id="random-pos" min="0" max="25" value="6">
+            <label for="text-align">文字对齐</label>
+            <select id="text-align">
+              <option value="center" selected>居中</option>
+              <option value="left">左对齐</option>
+              <option value="right">右对齐</option>
+            </select>
           </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="random-opacity">底条深浅浮动 <span id="random-opacity-val">15</span>%</label>
-            <input type="range" id="random-opacity" min="0" max="60" value="15">
-          </div>
-          <div class="field">
-            <label for="random-seed">随机种子</label>
-            <input type="text" id="random-seed" value="1">
-          </div>
-        </div>
-        <div class="checkbox-row">
-          <label><input type="checkbox" id="random-color" checked> 文字颜色随机</label>
-          <label><input type="checkbox" id="random-font" checked> 字体随机</label>
         </div>
         <div class="field">
-          <label>随机字体池（随机时从这里挑）</label>
-          <div class="chip-list" id="font-pool"></div>
+          <label for="opacity">底条不透明度 <span id="opacity-val">55</span>%</label>
+          <input type="range" id="opacity" min="0" max="100" value="55">
         </div>
-        <button id="btn-reshuffle" class="btn btn-sm">换一批随机</button>
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="show-bar" checked> 显示底条（文字下面的深色条）</label>
+        </div>
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="italic"> 文字倾斜</label>
+        </div>
+      </details>
+
+      <details class="adv" id="random-card">
+        <summary>每张图随机变化（全班截图不重样）<span id="random-badge" class="badge ok">已开启</span></summary>
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="random-enabled" checked> 开启随机：每张图的字号、位置、颜色、字体略有不同</label>
+        </div>
+        <div id="random-body">
+          <div class="grid-2">
+            <div class="field">
+              <label for="random-size">字号浮动 <span id="random-size-val">12</span>%</label>
+              <input type="range" id="random-size" min="0" max="40" value="12">
+            </div>
+            <div class="field">
+              <label for="random-pos">位置浮动 <span id="random-pos-val">6</span>%</label>
+              <input type="range" id="random-pos" min="0" max="25" value="6">
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="random-opacity">底条深浅浮动 <span id="random-opacity-val">15</span>%</label>
+              <input type="range" id="random-opacity" min="0" max="60" value="15">
+            </div>
+            <div class="field">
+              <label for="random-seed">随机种子</label>
+              <input type="text" id="random-seed" value="1">
+            </div>
+          </div>
+          <div class="checkbox-row">
+            <label><input type="checkbox" id="random-color" checked> 文字颜色随机</label>
+            <label><input type="checkbox" id="random-font" checked> 字体随机</label>
+          </div>
+          <div class="field">
+            <label>随机字体池（随机时从这里挑）</label>
+            <div class="chip-list" id="font-pool"></div>
+          </div>
+          <button id="btn-reshuffle" class="btn btn-sm">换一批随机</button>
+        </div>
+      </details>
+    </section>
+
+    <!-- 第 4 步：导出 -->
+    <section class="card step" id="step-4">
+      <h2><span class="step-num">4</span>导出</h2>
+      <div class="field">
+        <label for="name-tpl">导出的文件叫什么名字</label>
+        <input type="text" id="name-tpl" value="{姓名}_{学号}_{班级}_{序号}" placeholder="{姓名}_{学号}_{序号}">
+        <p class="hint" id="name-preview">文件名预览：（导入图片后显示）</p>
       </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="out-format">图片格式</label>
+          <select id="out-format">
+            <option value="png" selected>PNG（清晰）</option>
+            <option value="jpeg">JPEG（文件更小）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="export-limit">只导出前几张（留空 = 全部）</label>
+          <input type="number" id="export-limit" min="1" placeholder="留空 = 全部">
+        </div>
+      </div>
+      <button id="btn-export" class="btn btn-primary btn-big" disabled>导出 ZIP</button>
+      <p class="hint">图片多时会打包成 ZIP 一次下载；只有一张时直接下载这张图。</p>
     </section>
 
   </aside>
@@ -265,6 +291,21 @@
   </section>
 
 </main>
+
+<!-- 新手引导：只在第一次访问时显示 -->
+<div id="onboard" class="onboard" hidden>
+  <div class="onboard-mask"></div>
+  <div class="onboard-box">
+    <h3>三步就能用</h3>
+    <ol class="onboard-steps">
+      <li><strong>第 1 步</strong>：把截图拖进左边虚线框（可多选）</li>
+      <li><strong>第 2 步</strong>：填姓名、学号；要给全班做，就打开「用花名册批量生成」</li>
+      <li><strong>第 3 步</strong>：看右边效果满意后，点最下面的「导出 ZIP」</li>
+    </ol>
+    <p class="muted">所有图片只在你自己电脑浏览器里处理，不会上传到任何地方。</p>
+    <button id="btn-onboard-close" class="btn btn-primary">知道了，开始用</button>
+  </div>
+</div>
 
 <footer class="footer">
   <span>SnapMark · 图片与数据均仅在浏览器本地处理，不上传任何服务器</span>

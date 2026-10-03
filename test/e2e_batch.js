@@ -3,6 +3,7 @@ const { chromium } = require("playwright");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { suppressOnboard } = require("./_helpers");
 
 const fx = path.join(__dirname, "fixtures");
 
@@ -43,6 +44,7 @@ const fx = path.join(__dirname, "fixtures");
   }
 
   try {
+    await suppressOnboard(page);
     await page.goto("http://localhost:8765", { waitUntil: "networkidle" });
 
     // ---- 1. 导入 UTF-8 CSV ----

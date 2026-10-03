@@ -516,6 +516,111 @@ html, body {
   border-top: 1px solid var(--border);
 }
 
+/* ---------- 分步流程 ---------- */
+.card.step { position: relative; }
+.card.step h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.hint-inline { color: var(--muted); font-size: 12px; font-weight: 400; }
+
+.dz-main { font-size: 14px; }
+
+.btn-big {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* 批量开关 */
+.batch-switch {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(79, 124, 255, 0.06);
+}
+.batch-switch .switch-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.batch-switch .switch-label input { transform: scale(1.2); }
+
+#roster-body {
+  border-top: 1px dashed var(--border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+/* 可折叠的高级选项 */
+details.adv {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+details.adv > summary {
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary::before {
+  content: "▸";
+  color: var(--accent);
+  font-size: 12px;
+  transition: transform 0.15s;
+}
+details.adv[open] > summary::before { transform: rotate(90deg); }
+details.adv > summary:hover { color: var(--text); }
+details.adv > *:not(summary) { padding: 0 12px 4px; }
+
+/* ---------- 新手引导 ---------- */
+.onboard { position: fixed; inset: 0; z-index: 100; }
+.onboard-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 20, 0.72);
+}
+.onboard-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 40px));
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.onboard-box h3 { margin: 0 0 14px; font-size: 18px; }
+.onboard-steps { margin: 0 0 14px; padding-left: 20px; line-height: 2; font-size: 14px; }
+.onboard-box .btn { width: 100%; margin-top: 10px; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
