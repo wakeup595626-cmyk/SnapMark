@@ -1,5 +1,13 @@
 # SnapMark · 截图快注
 
+<p align="center">
+  <a href="https://wakeup595626-cmyk.github.io/SnapMark/">
+    <img src="https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%BF%E7%94%A8-%E7%82%B9%E8%BF%99%E9%87%8C%E6%89%93%E5%BC%80-2ea44f?style=for-the-badge" alt="在线使用：点这里打开">
+  </a>
+</p>
+
+> **在线地址（免安装，点开即用）：<https://wakeup595626-cmyk.github.io/SnapMark/>**
+
 > 批量给截图加水印信息（姓名 / 学号 / 班级 / 自定义变量），一键导出重命名好的 ZIP。
 > **纯本地运行，图片不上传任何服务器。**
 
@@ -76,7 +84,9 @@
 
 ### 方式一：在线使用
 
-访问 GitHub Pages 地址（部署后填写），打开即用。
+**<https://wakeup595626-cmyk.github.io/SnapMark/>**
+
+打开即用，无需安装任何东西。所有图片处理都在你自己的浏览器里完成，图片和名单不会上传到任何服务器。
 
 ### 方式二：本地使用（推荐，更快更私密）
 
