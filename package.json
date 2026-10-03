@@ -1,0 +1,17 @@
+{
+  "name": "snapmark",
+  "version": "1.0.0",
+  "description": "批量给截图添加姓名/学号/班级等标注信息，一键导出重命名好的 ZIP。纯本地运行，不上传任何数据。",
+  "private": true,
+  "scripts": {
+    "start": "npx serve .",
+    "test:fixtures": "node test/gen_test_imgs.js",
+    "test:e2e": "node test/e2e.js",
+    "test:file-mobile": "node test/check_file_and_mobile.js"
+  },
+  "keywords": ["screenshot", "watermark", "annotate", "batch", "privacy"],
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

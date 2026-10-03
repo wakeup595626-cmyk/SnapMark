@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnapMark · 截图快注</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">SnapMark</span>
+    <span class="tagline">批量截图标注 · 纯本地 · 不上传</span>
+  </div>
+  <div class="top-actions">
+    <span id="export-count" class="export-count" hidden></span>
+    <button id="btn-export" class="btn btn-primary" disabled>导出 ZIP</button>
+    <button id="btn-clear" class="btn btn-ghost">清空</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- 左侧：控制面板 -->
+  <aside class="panel controls">
+
+    <section class="card">
+      <h2>图片</h2>
+      <div id="dropzone" class="dropzone" tabindex="0">
+        <p>拖拽图片到这里</p>
+        <p class="muted">或点击选择（支持多选）</p>
+        <input type="file" id="file-input" accept="image/*" multiple hidden>
+      </div>
+      <div class="image-list-wrap">
+        <ul id="image-list" class="image-list"></ul>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>标注信息</h2>
+      <div class="field">
+        <label for="tpl">文字模板</label>
+        <input type="text" id="tpl" value="{姓名} {学号} {班级}" placeholder="例如：{姓名} {学号} {班级}">
+        <p class="hint">支持变量：<code>{姓名}</code> <code>{学号}</code> <code>{班级}</code> <code>{序号}</code></p>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="meta-name">姓名</label>
+          <input type="text" id="meta-name" placeholder="张三">
+        </div>
+        <div class="field">
+          <label for="meta-id">学号</label>
+          <input type="text" id="meta-id" placeholder="2023123456">
+        </div>
+      </div>
+      <div class="field">
+        <label for="meta-cls">班级</label>
+        <input type="text" id="meta-cls" placeholder="软件2301班">
+      </div>
+      <div class="field">
+        <label for="name-tpl">导出文件名模板</label>
+        <input type="text" id="name-tpl" value="{姓名}_{学号}_{班级}_{序号}" placeholder="{姓名}_{学号}_{序号}">
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>批量名单 <span id="roster-badge" class="badge">未导入</span></h2>
+
+      <div class="field">
+        <div class="row-actions">
+          <button id="btn-import-roster" class="btn btn-sm">选择文件</button>
+          <button id="btn-clear-roster" class="btn btn-sm btn-ghost" disabled>清空名单</button>
+          <span class="muted">.xlsx / .csv / .txt</span>
+        </div>
+        <input type="file" id="roster-input" accept=".xlsx,.xls,.csv,.txt,.tsv" hidden>
+      </div>
+
+      <div class="field">
+        <label for="roster-paste">或从 Excel 直接复制，粘贴到这里</label>
+        <textarea id="roster-paste" rows="3" placeholder="姓名&#9;学号&#9;班级&#10;张三&#9;2023123456&#9;软件2301班"></textarea>
+        <button id="btn-parse-paste" class="btn btn-sm">解析粘贴内容</button>
+      </div>
+
+      <div class="field">
+        <label>批量模式</label>
+        <div class="radio-list">
+          <label><input type="radio" name="batch-mode" value="none" checked> 关闭（单张模式）</label>
+          <label><input type="radio" name="batch-mode" value="one-to-many"> 一图 × 名单：一张图，每人各出一张</label>
+          <label><input type="radio" name="batch-mode" value="one-to-one"> 图片 × 名单：每张图配一个学生</label>
+        </div>
+      </div>
+
+      <div class="field" id="match-field" hidden>
+        <label for="match-by">图片与学生的对应方式</label>
+        <select id="match-by">
+          <option value="order">按顺序一一对应（按导入顺序）</option>
+          <option value="filename">按文件名匹配（文件名含姓名或学号）</option>
+        </select>
+      </div>
+
+      <div class="field" id="map-field" hidden>
+        <label>列的对应关系（自动识别，可手动改）</label>
+        <div class="map-grid">
+          <span>姓名</span><select id="map-name" class="col-select"></select>
+          <span>学号</span><select id="map-id" class="col-select"></select>
+          <span>班级</span><select id="map-class" class="col-select"></select>
+        </div>
+      </div>
+
+      <div class="field" id="limit-field" hidden>
+        <label for="export-limit">导出数量限制（留空 = 全部）</label>
+        <input type="number" id="export-limit" min="1" placeholder="例如 10">
+      </div>
+
+      <div id="roster-preview" class="roster-preview" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2>样式</h2>
+      <div class="field">
+        <label>位置</label>
+        <div class="pos-grid" id="pos-grid">
+          <button data-pos="top-left" title="左上">左上</button>
+          <button data-pos="top-center" title="上中">上中</button>
+          <button data-pos="top-right" title="右上">右上</button>
+          <button data-pos="center-left" title="左中">左中</button>
+          <button data-pos="center" title="居中">居中</button>
+          <button data-pos="center-right" title="右中">右中</button>
+          <button data-pos="bottom-left" title="左下">左下</button>
+          <button data-pos="bottom-center" class="active" title="下中">下中</button>
+          <button data-pos="bottom-right" title="右下">右下</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="font-size">字号 <span id="font-size-val">4</span>%</label>
+          <input type="range" id="font-size" min="2" max="12" value="4">
+        </div>
+        <div class="field">
+          <label for="opacity">底条不透明度 <span id="opacity-val">55</span>%</label>
+          <input type="range" id="opacity" min="0" max="100" value="55">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="text-color">文字颜色</label>
+          <input type="color" id="text-color" value="#ffffff">
+        </div>
+        <div class="field">
+          <label for="bg-color">底条颜色</label>
+          <input type="color" id="bg-color" value="#000000">
+        </div>
+      </div>
+      <div class="field checkbox-field">
+        <label><input type="checkbox" id="show-bar" checked> 显示底条</label>
+      </div>
+      <div class="field">
+        <label for="out-format">输出格式</label>
+        <select id="out-format">
+          <option value="png" selected>PNG（无损）</option>
+          <option value="jpeg">JPEG（更小）</option>
+        </select>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- 右侧：预览 -->
+  <section class="panel preview">
+    <div class="preview-head">
+      <span id="preview-name" class="preview-name">未选择图片</span>
+      <span class="muted" id="preview-meta"></span>
+    </div>
+    <div class="preview-canvas-wrap">
+      <canvas id="preview-canvas"></canvas>
+      <div id="empty-tip" class="empty-tip">拖入图片后，左侧填写信息即可预览效果</div>
+    </div>
+    <div class="preview-actions">
+      <button id="btn-prev" class="btn btn-ghost">上一张</button>
+      <button id="btn-next" class="btn btn-ghost">下一张</button>
+      <button id="btn-download-current" class="btn btn-ghost" disabled>导出当前张</button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <span>SnapMark · 图片与数据均仅在浏览器本地处理，不上传任何服务器</span>
+</footer>
+
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

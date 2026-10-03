@@ -1,0 +1,7 @@
+node_modules/
+test/fixtures/
+test/shots/
+*.zip
+*.log
+.DS_Store
+Thumbs.db
