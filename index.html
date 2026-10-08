@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'">
 <title>SnapMark · 截图快注</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,6 +16,8 @@
   </div>
   <div class="top-actions">
     <span id="export-count" class="export-count" hidden></span>
+    <button id="btn-undo" class="btn btn-ghost" title="撤销 (Ctrl+Z)" disabled>↶ 撤销</button>
+    <button id="btn-redo" class="btn btn-ghost" title="重做 (Ctrl+Y)" disabled>↷ 重做</button>
     <button id="btn-clear" class="btn btn-ghost">清空</button>
   </div>
 </header>
@@ -207,6 +210,32 @@
         </div>
       </details>
 
+      <details class="adv" id="style-preset-card">
+        <summary>样式方案（一键套用，可存自己的）</summary>
+        <div class="chip-list" id="preset-chips"></div>
+        <button id="btn-save-preset" class="btn btn-sm">＋ 把当前样子存成方案</button>
+      </details>
+
+      <details class="adv" id="outline-card">
+        <summary>文字描边 / 阴影（白图上看清浅色字）</summary>
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="outline-enabled"> 文字描边</label>
+        </div>
+        <div class="field" id="outline-body" hidden>
+          <label for="outline-width">描边粗细 <span id="outline-width-val">8</span></label>
+          <input type="range" id="outline-width" min="2" max="24" value="8">
+          <label for="outline-color" class="mt8">描边颜色</label>
+          <input type="color" id="outline-color" value="#000000">
+        </div>
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="shadow-enabled"> 文字阴影</label>
+        </div>
+        <div class="field" id="shadow-body" hidden>
+          <label for="shadow-blur">阴影模糊 <span id="shadow-blur-val">12</span></label>
+          <input type="range" id="shadow-blur" min="2" max="40" value="12">
+        </div>
+      </details>
+
       <details class="adv" id="random-card">
         <summary>每张图随机变化（全班截图不重样）<span id="random-badge" class="badge ok">已开启</span></summary>
         <div class="field checkbox-field">
@@ -268,6 +297,10 @@
         </div>
       </div>
       <button id="btn-export" class="btn btn-primary btn-big" disabled>导出 ZIP</button>
+      <div id="export-progress" class="export-progress" hidden>
+        <div class="bar"><div id="export-progress-fill" class="fill"></div></div>
+        <span id="export-progress-text" class="muted">0%</span>
+      </div>
       <p class="hint">图片多时会打包成 ZIP 一次下载；只有一张时直接下载这张图。</p>
     </section>
 

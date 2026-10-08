@@ -36,6 +36,8 @@
       textColor: "#ffffff",
       bgColor: "#000000",
       showBar: true,
+      outline: { enabled: false, widthPct: 8, color: "#000000" },
+      shadow: { enabled: false, blurPct: 12 },
       outFormat: "png",
       batchMode: "none",
       matchBy: "order",
@@ -511,7 +513,7 @@
 
   function setRoster(roster) {
     state.settings.roster = roster;
-    saveSettings();
+    commit();
     renderRoster();
     renderPreview();
     updateButtons();
@@ -839,13 +841,30 @@
       ctx.fill();
     }
 
-    ctx.fillStyle = textColor;
     const textX = x + alignShift;
     let startY = y - (lines.length * lineHeight) / 2 + lineHeight / 2;
+    const sh = s.shadow || {};
+    const ol = s.outline || {};
+    if (sh.enabled) {
+      // /1000 的比例在常见截图尺寸下偏小，与滑杆刻度(/100)观感一致
+      ctx.shadowColor = "rgba(0,0,0,0.55)";
+      ctx.shadowBlur = Math.max(2, (shortSide * Number(sh.blurPct || 0)) / 100);
+      ctx.shadowOffsetY = Math.max(1, ctx.shadowBlur / 3);
+    }
     lines.forEach((l) => {
+      if (ol.enabled) {
+        ctx.lineJoin = "round";
+        ctx.lineWidth = Math.max(1, (fontSize * Number(ol.widthPct || 0)) / 100);
+        ctx.strokeStyle = ol.color || "#000000";
+        ctx.strokeText(l, textX, startY);
+      }
+      ctx.fillStyle = textColor;
       ctx.fillText(l, textX, startY);
       startY += lineHeight;
     });
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
   }
 
   function computeAnchor(pos, w, h, margin, barW, barH, s) {
@@ -963,38 +982,69 @@
     }, 100);
   }
 
+  function setProgress(pct, text) {
+    const box = document.getElementById("export-progress");
+    const fill = document.getElementById("export-progress-fill");
+    const label = document.getElementById("export-progress-text");
+    if (!box) return;
+    box.hidden = pct == null;
+    if (pct != null) {
+      fill.style.width = Math.round(pct) + "%";
+      label.textContent = text || Math.round(pct) + "%";
+    }
+  }
+
   async function exportZip() {
     const { jobs, errors } = computeJobs();
-    if (errors.length) {
-      alert(errors.join("\n"));
-      return;
-    }
+    if (errors.length) { alert(errors.join(String.fromCharCode(10))); return; }
     const s = state.settings;
     const ext = s.outFormat === "jpeg" ? "jpg" : "png";
-    const zip = new JSZip();
     const off = document.createElement("canvas");
     const octx = off.getContext("2d");
-    const used = new Set();
-
-    for (const job of jobs) {
-      off.width = job.img.imgEl.naturalWidth;
-      off.height = job.img.imgEl.naturalHeight;
-      drawAnnotated(octx, job.img.imgEl, job.vars, job.seq, job.total, job.variation);
-      const blob = await canvasToBlob(off, s.outFormat);
-
-      let name = buildOutputName(job.vars, job.seq, job.total, ext);
-      let n = name,
-        c = 1;
-      while (used.has(n.toLowerCase())) {
-        const dot = name.lastIndexOf(".");
-        n = `${name.slice(0, dot)}_${++c}${name.slice(dot)}`;
+    btnExport.disabled = true;
+    try {
+      if (jobs.length === 1) {
+        const job = jobs[0];
+        setProgress(30, "绘制中…");
+        off.width = job.img.imgEl.naturalWidth;
+        off.height = job.img.imgEl.naturalHeight;
+        drawAnnotated(octx, job.img.imgEl, job.vars, job.seq, job.total, job.variation);
+        setProgress(70, "编码中…");
+        const blob = await canvasToBlob(off, s.outFormat);
+        setProgress(100, "完成");
+        downloadBlob(blob, buildOutputName(job.vars, job.seq, job.total, ext));
+        return;
       }
-      used.add(n.toLowerCase());
-      zip.file(n, blob);
+      const zip = new JSZip();
+      const used = new Set();
+      let done = 0;
+      for (const job of jobs) {
+        off.width = job.img.imgEl.naturalWidth;
+        off.height = job.img.imgEl.naturalHeight;
+        drawAnnotated(octx, job.img.imgEl, job.vars, job.seq, job.total, job.variation);
+        const blob = await canvasToBlob(off, s.outFormat);
+        let name = buildOutputName(job.vars, job.seq, job.total, ext);
+        let n = name, c = 1;
+        while (used.has(n.toLowerCase())) {
+          const dot = name.lastIndexOf(".");
+          n = name.slice(0, dot) + "_" + (++c) + name.slice(dot);
+        }
+        used.add(n.toLowerCase());
+        zip.file(n, blob);
+        done++;
+        setProgress((done / jobs.length) * 100, done + "/" + jobs.length);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      setProgress(100, "打包中…");
+      const content = await zip.generateAsync(
+        { type: "blob" },
+        (m) => setProgress(m.percent, "打包 " + Math.round(m.percent) + "%")
+      );
+      downloadBlob(content, "snapmark_" + jobs.length + "张_" + stamp() + ".zip");
+    } finally {
+      setProgress(null);
+      btnExport.disabled = false;
     }
-
-    const content = await zip.generateAsync({ type: "blob" });
-    downloadBlob(content, `snapmark_${jobs.length}张_${stamp()}.zip`);
   }
 
   function stamp() {
@@ -1103,7 +1153,7 @@
     ta.focus();
     ta.setSelectionRange(pos, pos);
     state.settings.template = ta.value;
-    saveSettings();
+    commit();
     renderPreview();
     updateButtons();
   }
@@ -1121,7 +1171,7 @@
       b.addEventListener("click", () => {
         $("tpl").value = p.text;
         state.settings.template = p.text;
-        saveSettings();
+        commit();
         renderPreview();
       });
       box.appendChild(b);
@@ -1154,7 +1204,7 @@
           next[k === key ? nk : k] = meta[k];
         });
         state.settings.meta = next;
-        saveSettings();
+        commit();
         renderMetaFields();
         renderVarChips();
         renderPreview();
@@ -1166,7 +1216,7 @@
       vInput.placeholder = "值";
       vInput.addEventListener("input", () => {
         state.settings.meta[key] = vInput.value;
-        saveSettings();
+        commit();
         renderPreview();
         updateButtons();
       });
@@ -1178,7 +1228,7 @@
       del.title = "删除该字段";
       del.addEventListener("click", () => {
         delete state.settings.meta[key];
-        saveSettings();
+        commit();
         renderMetaFields();
         renderVarChips();
         renderPreview();
@@ -1192,7 +1242,60 @@
   }
 
   // ---------- 设置持久化 ----------
+    // ---------- 撤销 / 重做（设置级快照） ----------
+  const history = { undo: [], redo: [], limit: 60 };
+  function snapshotSettings() {
+    return JSON.stringify(state.settings);
+  }
+  function restoreSettings(json) {
+    try {
+      const s = JSON.parse(json);
+      state.settings = s;
+      if (!s.outline) s.outline = { enabled: false, widthPct: 8, color: "#000000" };
+      if (!s.shadow) s.shadow = { enabled: false, blurPct: 12 };
+      if (!s.random) s.random = Object.assign({}, RANDOM_DEFAULTS, { fontPool: RANDOM_DEFAULTS.fontPool.slice() });
+      state.settings.meta = Object.assign({}, s.meta || {});
+    } catch (_) {}
+  }
+  function refreshAfterSettings() {
+    saveSettings();
+    syncControlsFromSettings();
+    renderRoster();
+    renderPreview();
+    updateButtons();
+    updateUndoButtons();
+  }
+  function commit() {
+      history.undo.push(snapshotSettings());
+      if (history.undo.length > history.limit) history.undo.shift();
+      history.redo.length = 0;
+      saveSettings();
+      renderPreview();
+      updateButtons();
+      updateUndoButtons();
+    }
+  function updateUndoButtons() {
+    const u = document.getElementById("btn-undo");
+    const r = document.getElementById("btn-redo");
+    if (u) u.disabled = history.undo.length <= 1;
+    if (r) r.disabled = history.redo.length === 0;
+  }
+  function undo() {
+    if (history.undo.length <= 1) return;
+    history.redo.push(history.undo.pop());
+    restoreSettings(history.undo[history.undo.length - 1]);
+    refreshAfterSettings();
+  }
+  function redo() {
+    if (!history.redo.length) return;
+    const json = history.redo.pop();
+    history.undo.push(json);
+    restoreSettings(json);
+    refreshAfterSettings();
+  }
+
   function saveSettings() {
+
     try {
       const s = Object.assign({}, state.settings);
       if (s.roster && s.roster.rows.length > MAX_PERSIST_ROWS) {
@@ -1267,6 +1370,7 @@
     renderVarChips();
     renderPresets();
     renderFontPool();
+    renderStylePresets();
   }
 
   function updateRandomBadge() {
@@ -1306,7 +1410,7 @@
           toast("至少保留一种字体");
           return;
         }
-        saveSettings();
+        commit();
         renderFontPool();
         renderPreview();
       });
@@ -1327,6 +1431,62 @@
   }
 
   /** 预览用的当前任务：和导出时的取法保持一致，保证所见即所得 */
+  // ---------- 样式方案（内置 + 自定义） ----------
+  const PRESET_KEY = "snapmark.presets.v1";
+  const BUILTIN_PRESETS = [
+    { name: "默认", builtin: true, s: { position: "bottom-center", fontSizePct: 4, fontKey: "yahei", fontWeight: "600", italic: false, textAlign: "center", opacity: 55, textColor: "#ffffff", bgColor: "#000000", showBar: true, outline: { enabled: false, widthPct: 8, color: "#000000" }, shadow: { enabled: false, blurPct: 12 } } },
+    { name: "醒目黄字", builtin: true, s: { position: "bottom-center", fontSizePct: 6, fontKey: "yahei", fontWeight: "800", italic: false, textAlign: "center", opacity: 70, textColor: "#ffe066", bgColor: "#000000", showBar: true, outline: { enabled: false, widthPct: 8, color: "#000000" }, shadow: { enabled: false, blurPct: 12 } } },
+    { name: "无底条描边", builtin: true, s: { position: "bottom-center", fontSizePct: 5, fontKey: "yahei", fontWeight: "700", italic: false, textAlign: "center", opacity: 55, textColor: "#ffffff", bgColor: "#000000", showBar: false, outline: { enabled: true, widthPct: 12, color: "#000000" }, shadow: { enabled: false, blurPct: 12 } } },
+    { name: "红底白字", builtin: true, s: { position: "top-center", fontSizePct: 5, fontKey: "yahei", fontWeight: "700", italic: false, textAlign: "center", opacity: 75, textColor: "#ffffff", bgColor: "#c0392b", showBar: true, outline: { enabled: false, widthPct: 8, color: "#000000" }, shadow: { enabled: false, blurPct: 12 } } }
+  ];
+  function loadCustomPresets() {
+    try { return JSON.parse(localStorage.getItem(PRESET_KEY) || "[]"); } catch (_) { return []; }
+  }
+  function saveCustomPresets(list) {
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(list)); } catch (_) {}
+  }
+  function captureStyle() {
+    const s = state.settings;
+    return { position: s.position, customX: s.customX, customY: s.customY, fontSizePct: s.fontSizePct, fontKey: s.fontKey, fontWeight: s.fontWeight, italic: s.italic, textAlign: s.textAlign, opacity: s.opacity, textColor: s.textColor, bgColor: s.bgColor, showBar: s.showBar, outline: Object.assign({}, s.outline), shadow: Object.assign({}, s.shadow) };
+  }
+  function applyStyle(snap) {
+    Object.assign(state.settings, snap);
+    state.settings.outline = Object.assign({ enabled: false, widthPct: 8, color: "#000000" }, snap.outline || {});
+    state.settings.shadow = Object.assign({ enabled: false, blurPct: 12 }, snap.shadow || {});
+    commit();
+    syncControlsFromSettings();
+    renderPreview();
+  }
+  function renderStylePresets() {
+    const box = $("preset-chips");
+    if (!box) return;
+    box.innerHTML = "";
+    const all = BUILTIN_PRESETS.concat(loadCustomPresets());
+    all.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip preset-chip";
+      b.textContent = p.name;
+      b.title = "套用这套样式";
+      b.addEventListener("click", () => applyStyle(p.s));
+      if (!p.builtin) {
+        const del = document.createElement("button");
+        del.className = "del-preset";
+        del.textContent = "×";
+        del.title = "删除这套方案";
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const list = loadCustomPresets();
+          list.splice(i - BUILTIN_PRESETS.length, 1);
+          saveCustomPresets(list);
+          renderStylePresets();
+        });
+        b.appendChild(del);
+      }
+      box.appendChild(b);
+    });
+  }
+
   function currentPreviewJob() {
     const item = state.images[state.currentIndex];
     if (!item) return null;
@@ -1363,7 +1523,7 @@
       document
         .querySelectorAll("#pos-grid button")
         .forEach((b) => b.classList.toggle("active", b.dataset.pos === "custom"));
-      saveSettings();
+      commit();
       renderPreview();
     };
 
@@ -1460,7 +1620,7 @@
     liveInputs.forEach(([id, setter]) => {
       $(id).addEventListener("input", (e) => {
         setter(e.target.value);
-        saveSettings();
+        commit();
         renderPreview();
         updateButtons();
       });
@@ -1469,33 +1629,33 @@
     $("font-size").addEventListener("input", (e) => {
       state.settings.fontSizePct = Number(e.target.value);
       $("font-size-val").textContent = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("opacity").addEventListener("input", (e) => {
       state.settings.opacity = Number(e.target.value);
       $("opacity-val").textContent = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("text-color").addEventListener("input", (e) => {
       state.settings.textColor = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("bg-color").addEventListener("input", (e) => {
       state.settings.bgColor = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("show-bar").addEventListener("change", (e) => {
       state.settings.showBar = e.target.checked;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("out-format").addEventListener("change", (e) => {
       state.settings.outFormat = e.target.value;
-      saveSettings();
+      commit();
     });
 
     document.querySelectorAll("#pos-grid button").forEach((b) => {
@@ -1505,7 +1665,7 @@
           .querySelectorAll("#pos-grid button")
           .forEach((x) => x.classList.toggle("active", x === b));
         $("custom-pos").hidden = b.dataset.pos !== "custom";
-        saveSettings();
+        commit();
         renderPreview();
       });
     });
@@ -1513,22 +1673,22 @@
     // ---------- 字体 ----------
     $("font-family").addEventListener("change", (e) => {
       state.settings.fontKey = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("font-weight").addEventListener("change", (e) => {
       state.settings.fontWeight = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("text-align").addEventListener("change", (e) => {
       state.settings.textAlign = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("italic").addEventListener("change", (e) => {
       state.settings.italic = e.target.checked;
-      saveSettings();
+      commit();
       renderPreview();
     });
 
@@ -1543,7 +1703,7 @@
           state.settings.customY = val;
           $("pos-y-val").textContent = Math.round(val);
         }
-        saveSettings();
+        commit();
         renderPreview();
       });
     });
@@ -1552,7 +1712,7 @@
     $("random-enabled").addEventListener("change", (e) => {
       state.settings.random.enabled = e.target.checked;
       updateRandomBadge();
-      saveSettings();
+      commit();
       renderPreview();
     });
     [
@@ -1564,38 +1724,83 @@
         const val = Number(e.target.value);
         state.settings.random[key] = val;
         $(valId).textContent = val;
-        saveSettings();
+        commit();
         renderPreview();
       });
     });
     $("random-color").addEventListener("change", (e) => {
       state.settings.random.color = e.target.checked;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("random-font").addEventListener("change", (e) => {
       state.settings.random.font = e.target.checked;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("random-seed").addEventListener("input", (e) => {
       state.settings.random.seed = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
     });
     $("btn-reshuffle").addEventListener("click", () => {
       state.settings.random.seed = String(Math.floor(Math.random() * 100000) + 1);
       $("random-seed").value = state.settings.random.seed;
-      saveSettings();
+      commit();
       renderPreview();
       toast("已换一批随机效果");
     });
+    // ---------- 文字描边 / 阴影 ----------
+    // 撤销/重做会整体替换 state.settings，所以这里经 getObj() 取当前对象，不能绑定旧引用
+    function bindStyleToggle(toggleId, bodyId, getObj) {
+      $(toggleId).addEventListener("change", (e) => {
+        getObj().enabled = e.target.checked;
+        $(bodyId).hidden = !e.target.checked;
+        commit();
+        renderPreview();
+      });
+    }
+    bindStyleToggle("outline-enabled", "outline-body", () => state.settings.outline);
+    bindStyleToggle("shadow-enabled", "shadow-body", () => state.settings.shadow);
+    $("outline-width").addEventListener("input", (e) => {
+      state.settings.outline.widthPct = Number(e.target.value);
+      $("outline-width-val").textContent = e.target.value;
+      commit();
+      renderPreview();
+    });
+    $("outline-color").addEventListener("input", (e) => {
+      state.settings.outline.color = e.target.value;
+      commit();
+      renderPreview();
+    });
+    $("shadow-blur").addEventListener("input", (e) => {
+      state.settings.shadow.blurPct = Number(e.target.value);
+      $("shadow-blur-val").textContent = e.target.value;
+      commit();
+      renderPreview();
+    });
+
+    // ---------- 样式方案 ----------
+    $("btn-save-preset").addEventListener("click", () => {
+      const name = prompt("给这套样式起个名字：", "我的方案");
+      if (!name) return;
+      const list = loadCustomPresets();
+      list.push({ name: name.trim() || "我的方案", builtin: false, s: captureStyle() });
+      saveCustomPresets(list);
+      renderStylePresets();
+      toast("已保存样式方案");
+    });
+
+    // ---------- 撤销 / 重做按钮 ----------
+    document.getElementById("btn-undo").addEventListener("click", undo);
+    document.getElementById("btn-redo").addEventListener("click", redo);
+
     $("btn-add-field").addEventListener("click", () => {
       const meta = state.settings.meta;
       let i = 1;
       while (`字段${i}` in meta) i++;
       meta[`字段${i}`] = "";
-      saveSettings();
+      commit();
       renderMetaFields();
       renderVarChips();
       const rows = $("meta-fields").querySelectorAll(".meta-row input.key");
@@ -1631,7 +1836,7 @@
     document.querySelectorAll('input[name="batch-mode"]').forEach((r) => {
       r.addEventListener("change", () => {
         state.settings.batchMode = r.value;
-        saveSettings();
+        commit();
         renderRoster();
         renderPreview();
         updateButtons();
@@ -1646,7 +1851,7 @@
       document.querySelectorAll('input[name="batch-mode"]').forEach((r) => {
         r.checked = r.value === state.settings.batchMode;
       });
-      saveSettings();
+      commit();
       renderRoster();
       renderPreview();
       updateButtons();
@@ -1668,14 +1873,14 @@
 
     $("match-by").addEventListener("change", (e) => {
       state.settings.matchBy = e.target.value;
-      saveSettings();
+      commit();
       renderPreview();
       updateButtons();
     });
 
     $("export-limit").addEventListener("input", (e) => {
       state.settings.exportLimit = e.target.value;
-      saveSettings();
+      commit();
       updateButtons();
     });
 
@@ -1684,7 +1889,7 @@
         $(id).addEventListener("change", (e) => {
           if (!state.settings.roster) return;
           state.settings.roster.map[key] = parseInt(e.target.value, 10);
-          saveSettings();
+          commit();
           renderVarChips();
           renderPreview();
           updateButtons();
@@ -1713,10 +1918,16 @@
     });
 
     document.addEventListener("keydown", (e) => {
-      if (e.target.matches("input, textarea, select")) return;
-      if (e.key === "ArrowLeft") btnPrev.click();
-      else if (e.key === "ArrowRight") btnNext.click();
-    });
+        if (e.target.matches("input, textarea, select")) return;
+        if (e.ctrlKey || e.metaKey) {
+          const k = (e.key || "").toLowerCase();
+          if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+          else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); redo(); }
+          return;
+        }
+        if (e.key === "ArrowLeft") btnPrev.click();
+        else if (e.key === "ArrowRight") btnNext.click();
+      });
   }
 
   // ---------- 启动 ----------
@@ -1734,8 +1945,16 @@
     renderRoster();
     renderPreview();
     updateButtons();
+    history.undo.length = 0; history.undo.push(snapshotSettings()); history.redo.length = 0; updateUndoButtons();
     maybeShowOnboard();
   }
 
   init();
+
+  // 调试与自动化测试用的只读句柄（不影响正常使用）
+  try {
+    Object.defineProperty(window, "__snapmark", { value: { state }, configurable: true });
+  } catch (_) {
+    window.__snapmark = { state };
+  }
 })();

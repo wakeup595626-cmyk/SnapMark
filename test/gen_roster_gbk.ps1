@@ -1,4 +1,4 @@
-# 生成 GBK 编码的测试花名册（模拟 Excel 直接另存的 CSV），用于验证乱码回退解码
+﻿# 生成 GBK 编码的测试花名册（模拟 Excel 直接另存的 CSV），用于验证乱码回退解码
 $ErrorActionPreference = "Stop"
 
 $surnames = "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜".ToCharArray()

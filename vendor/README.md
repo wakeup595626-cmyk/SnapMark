@@ -18,6 +18,7 @@
 - 版本：0.20.3
 - 许可：Apache-2.0（见 `xlsx-LICENSE.txt`）
 - 用途：解析导入的 Excel（.xlsx / .xls）花名册
+- 版本核实：已于 2026-10 与官方 `xlsx-latest` 通道比对 SHA-256 一致（当前最新 standalone 即 0.20.3）
 
 同样为了离线可用而放入仓库。如果不导入 Excel、只用 CSV 或粘贴，
 这个文件理论上可以删掉（但要同时去掉 `index.html` 里的 script 引用）。

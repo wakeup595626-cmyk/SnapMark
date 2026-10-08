@@ -88,6 +88,7 @@ const { suppressOnboard } = require("./_helpers");
     // 7. 校验 ZIP 内有 3 个文件且文件名正确
     const AdmZip = null; // 不引依赖，直接用系统 PowerShell 另行校验，这里只看大小
     ok("ZIP 体积合理", s2 > 30000, "预期三张 PNG 打包");
+    ok("ZIP 文件名含日期戳", /snapmark_3张_\d{8}_\d{4}\.zip/.test(dl2.suggestedFilename()), dl2.suggestedFilename());
 
     // 8. localStorage 持久化：刷新后姓名还在
     await page.reload({ waitUntil: "networkidle" });

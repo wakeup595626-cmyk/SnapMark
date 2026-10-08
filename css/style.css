@@ -621,6 +621,44 @@ details.adv > *:not(summary) { padding: 0 12px 4px; }
 .onboard-steps { margin: 0 0 14px; padding-left: 20px; line-height: 2; font-size: 14px; }
 .onboard-box .btn { width: 100%; margin-top: 10px; }
 
+
+/* ---------- 导出进度 ---------- */
+.export-progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.export-progress .bar {
+  flex: 1;
+  height: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.export-progress .fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  transition: width 0.12s;
+}
+.mt8 { margin-top: 8px; }
+
+/* ---------- 样式方案芯片 ---------- */
+#style-preset-card .chip-list { margin-bottom: 10px; }
+.preset-chip { position: relative; }
+.preset-chip .del-preset {
+  margin-left: 6px;
+  color: var(--muted);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+.preset-chip .del-preset:hover { color: var(--danger); }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }

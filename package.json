@@ -7,7 +7,12 @@
     "start": "npx serve .",
     "test:fixtures": "node test/gen_test_imgs.js",
     "test:e2e": "node test/e2e.js",
-    "test:file-mobile": "node test/check_file_and_mobile.js"
+    "test:batch": "node test/e2e_batch.js",
+    "test:v2": "node test/e2e_v2.js",
+    "test:wizard": "node test/check_wizard.js",
+    "test:features": "node test/check_new_features.js",
+    "test:file-mobile": "node test/check_file_and_mobile.js",
+    "test:desktop": "node test/check_desktop.js"
   },
   "keywords": ["screenshot", "watermark", "annotate", "batch", "privacy"],
   "license": "MIT",
