@@ -1,7 +1,7 @@
 {
   "name": "snapmark",
   "version": "1.0.0",
-  "description": "批量给截图添加姓名/学号/班级等标注信息，一键导出重命名好的 ZIP。纯本地运行，不上传任何数据。",
+  "description": "浏览器内批量给截图添加姓名、学号、班级等标注，导出命名规范的 ZIP；图片和名单不上传。",
   "private": true,
   "scripts": {
     "start": "npx serve .",
